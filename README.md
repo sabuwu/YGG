@@ -32,7 +32,9 @@ com `🏓 pong!`.
 
 - Resposta a `@ygg ping` enviado como texto.
 - Reconhecimento de menções reais ao bot, seguidas de `ping`.
+- Reconhecimento da menção ao cargo gerenciado do próprio bot, seguida de `ping`.
 - Registro e sincronização global do comando `/ping` na inicialização.
+- Resposta a `/ping` quando enviado como mensagem de texto comum.
 - Console local com ajuda e comandos para encerrar o programa.
 - Logs de inicialização, conexão, sincronização e comandos atendidos.
 - Encerramento coordenado do cliente Discord e do console.
@@ -200,6 +202,9 @@ Se estiver usando diretamente o ambiente virtual:
 
 O comando de console `ygg` está declarado em `[project.scripts]` e aponta
 para `ygg.__main__:main`. A execução como módulo passa pelo mesmo `main()`.
+O arquivo `src/ygg/app/app.py` também chama `main()` quando executado
+diretamente, permitindo iniciar o bot pelo arquivo ativo da IDE com o
+ambiente virtual do projeto selecionado.
 Abra o terminal integrado da IDE para utilizar o console local; consoles de
 depuração ou painéis de saída podem não oferecer entrada interativa.
 
@@ -227,18 +232,25 @@ A presença do prompt, por si só, não confirma a conexão: aguarde o log
 | --- | --- | --- |
 | Prefixo literal | Digite `@ygg ping` como texto. | `🏓 pong!` |
 | Menção real | Selecione o bot na lista de menções do Discord e acrescente `ping`. | `🏓 pong!` |
+| Menção ao cargo do bot | Selecione o cargo gerenciado do Ygg e acrescente `ping`. | `🏓 pong!` |
+| Texto `/ping` | Envie `/ping` como mensagem comum, mesmo sem selecionar o comando no menu. | `🏓 pong!` |
 
 O prefixo textual `@ygg` é fixo e independe do nome ou apelido do bot no
 servidor. Uma menção real é identificada pelo ID do próprio bot, nos formatos
 internos `<@ID>` e `<@!ID>`.
+O cargo gerenciado do próprio bot é identificado por `guild.self_role`, no
+formato `<@&ID_DO_CARGO>`. Outros cargos, mesmo com o mesmo nome, não são
+aceitos como prefixo. Usuários e cargos têm formatos de menção distintos na
+[documentação do Discord](https://docs.discord.com/developers/reference#message-formatting).
 
 O interpretador de mensagens segue estas regras:
 
-- Aceita exatamente dois elementos: o prefixo ou a menção, seguido de `ping`.
+- Aceita dois elementos: o prefixo ou a menção, seguido de `ping`; também
+  aceita `/ping` sozinho como atalho textual.
 - Ignora diferenças entre maiúsculas e minúsculas no prefixo textual e no comando.
 - Aceita espaços extras, tabulações e quebras de linha entre os elementos.
 - Ignora mensagens enviadas por bots, inclusive pelo próprio Ygg.
-- Ignora menções a outros usuários, comandos desconhecidos e argumentos adicionais.
+- Ignora menções a outros usuários ou cargos, comandos desconhecidos e argumentos adicionais.
 
 Exemplos de texto aceito:
 
@@ -255,6 +267,8 @@ produzem resposta na implementação atual.
 
 Digite `/ping` no Discord e selecione o comando da aplicação Ygg. A resposta
 também é `🏓 pong!` e é enviada publicamente na interação.
+Se `/ping` for enviado como uma mensagem comum, o bot responde pelo
+tratamento de mensagens. Esse atalho funciona junto ao comando de aplicação.
 
 O comando é registrado em `App.__init__()` e sincronizado globalmente em
 `setup_hook()`. Não há seleção de servidor de desenvolvimento no código.
@@ -336,6 +350,8 @@ YGG/
 │               └── terminal.py       # Prompt e comandos locais
 └── tests/
     ├── test_app.py                   # Comandos Discord e ciclo de execução
+    ├── test_entrypoints.py           # Execução direta, como módulo e importação
+    ├── test_gateway.py               # Payloads reais dos eventos do discord.py
     └── test_terminal.py              # Entrada, ajuda, saída e cancelamento
 ```
 
@@ -398,10 +414,11 @@ uv run --locked python -m unittest discover -s tests -p 'test_app.py' -v
 uv run --locked python -m unittest discover -s tests -p 'test_terminal.py' -v
 ```
 
-Atualmente há **16 testes**: nove para a aplicação e sete para o terminal.
-Eles verificam:
+A suíte cobre a aplicação, seus pontos de entrada, o processamento de eventos
+do Gateway e o terminal. Os testes verificam:
 
 - Prefixo textual, menções reais, variações de caixa e espaços.
+- Menção ao cargo gerenciado do próprio bot e `/ping` enviado como texto.
 - Mensagens de bots, menções a outros usuários e entradas não reconhecidas.
 - Registro e resposta de `/ping` e sincronização da árvore de comandos.
 - Continuidade dos comandos por mensagem após falha HTTP na sincronização.
@@ -410,6 +427,9 @@ Eles verificam:
 - Execução sem TTY.
 - Ajuda, comandos de saída, entrada vazia, texto desconhecido, EOF e Ctrl+C.
 - Propagação do cancelamento do terminal.
+- Execução direta de `app.py`, execução como módulo e importação sem iniciar o bot.
+- Encaminhamento de `MESSAGE_CREATE` e `INTERACTION_CREATE` pelos parsers
+  reais do `discord.py`, com as saídas HTTP substituídas nos testes.
 
 Os testes usam `unittest.IsolatedAsyncioTestCase`, mocks e tokens fictícios.
 Eles não leem o `.env` real nem se conectam ao Discord. Portanto, não validam
@@ -481,7 +501,7 @@ a suíte de testes depois de modificar o comportamento do projeto.
 | `/ping` não aparece | Confira a instalação com `applications.commands` e o resultado da sincronização nos logs. Confirme que está selecionando a aplicação correta no Discord. |
 | Log `Não foi possível sincronizar os comandos /` | Leia a exceção registrada para identificar a falha de API ou permissão. Os comandos por mensagem permanecem disponíveis se a conexão for concluída. |
 | Mensagem de entrada sem TTY e ausência de `YGG > ` | Execute em um terminal interativo. Esse comportamento é esperado em painéis sem entrada de teclado. |
-| Nenhuma saída ao executar `app.py` diretamente | Use `python -m ygg` ou o comando `ygg` no ambiente instalado. A chamada de inicialização fica no ponto de entrada do pacote. |
+| O comportamento continua antigo depois de alterar o código | Encerre a instância atual e inicie novamente com `uv run -m ygg`. O processo em execução não recarrega os arquivos automaticamente. |
 | `ModuleNotFoundError: No module named 'ygg'` | Instale o projeto com `uv sync --locked` ou `python -m pip install -e .` no ambiente usado para executar. |
 | Pacotes não encontrados ou versão de Python incompatível | Confira se a IDE e o terminal usam o ambiente `.venv` preparado com Python 3.14 ou superior. |
 | Falhas de conexão ao Discord | Consulte os logs e verifique o acesso à rede do processo. |

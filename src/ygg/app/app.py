@@ -42,6 +42,7 @@ class App(discord.Client):
         logger.info("Conectado ao Discord como %s. Use @ygg ping ou /ping.", self.user)
 
     async def ping(self, interaction: discord.Interaction) -> None:
+        logger.info("/ping recebido de %s.", interaction.user)
         await interaction.response.send_message("🏓 pong!")
         logger.info("/ping executado por %s.", interaction.user)
 
@@ -50,17 +51,27 @@ class App(discord.Client):
             return
 
         parts = (message.content or "").split()
-        if len(parts) != 2:
+        if len(parts) == 1:
+            if parts[0].casefold() != "/ping":
+                return
+        elif len(parts) == 2:
+            prefixes = {"@ygg"}
+            if self.user is not None:
+                prefixes.update({f"<@{self.user.id}>", f"<@!{self.user.id}>"})
+
+            bot_role = message.guild.self_role if message.guild is not None else None
+            if bot_role is not None:
+                prefixes.add(bot_role.mention)
+
+            prefix, command = parts
+            if prefix.casefold() not in prefixes or command.casefold() != "ping":
+                return
+        else:
             return
 
-        prefixes = {"@ygg"}
-        if self.user is not None:
-            prefixes.update({f"<@{self.user.id}>", f"<@!{self.user.id}>"})
-
-        prefix, command = parts
-        if prefix.casefold() in prefixes and command.casefold() == "ping":
-            await message.channel.send("🏓 pong!")
-            logger.info("%s: %s", message.author, message.content)
+        logger.info("Ping por mensagem recebido de %s: %s", message.author, message.content)
+        await message.channel.send("🏓 pong!")
+        logger.info("Pong enviado para %s.", message.author)
 
 
 async def run_app(app: App, token: str) -> None:
@@ -107,3 +118,7 @@ def main() -> None:
             ) from error
         except KeyboardInterrupt:
             print("Até mais!")
+
+
+if __name__ == "__main__":
+    main()

@@ -26,11 +26,12 @@ class AppCommandsTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.app.close()
 
-    def message(self, content, *, bot=False):
+    def message(self, content, *, bot=False, guild=None):
         return SimpleNamespace(
             content=content,
             author=SimpleNamespace(bot=bot),
             channel=SimpleNamespace(send=AsyncMock()),
+            guild=guild,
         )
 
     async def test_ping_accepts_text_prefix_and_mentions_with_whitespace_and_case(self):
@@ -51,12 +52,14 @@ class AppCommandsTests(unittest.IsolatedAsyncioTestCase):
     async def test_ping_ignores_bots_other_mentions_and_unrelated_messages(self):
         for content, bot in (
             ("@ygg ping", True),
+            ("/ping", True),
             ("<@123456789> ping", True),
             ("<@987654321> ping", False),
             ("<@!987654321> ping", False),
             ("@yggish ping", False),
             ("hello @ygg ping", False),
             ("@ygg ping extra", False),
+            ("/ping extra", False),
             ("@ygg unknown", False),
             ("@yggping", False),
             ("ping", False),
@@ -66,6 +69,32 @@ class AppCommandsTests(unittest.IsolatedAsyncioTestCase):
         ):
             with self.subTest(content=content, bot=bot):
                 message = self.message(content, bot=bot)
+                await self.app.on_message(message)
+                message.channel.send.assert_not_awaited()
+
+    async def test_ping_accepts_plain_slash_text(self):
+        for content in ("/ping", "  /PING\n"):
+            with self.subTest(content=content):
+                message = self.message(content)
+                await self.app.on_message(message)
+                message.channel.send.assert_awaited_once_with("🏓 pong!")
+
+    async def test_ping_accepts_only_own_managed_role(self):
+        guild = SimpleNamespace(self_role=SimpleNamespace(mention="<@&777>"))
+        message = self.message("<@&777> ping", guild=guild)
+        await self.app.on_message(message)
+        message.channel.send.assert_awaited_once_with("🏓 pong!")
+
+        for content in ("<@&888> ping", "<@&777> ping extra", "@everyone ping"):
+            with self.subTest(content=content):
+                message = self.message(content, guild=guild)
+                await self.app.on_message(message)
+                message.channel.send.assert_not_awaited()
+
+    async def test_ping_ignores_role_without_own_managed_role(self):
+        for guild in (None, SimpleNamespace(self_role=None)):
+            with self.subTest(guild=guild):
+                message = self.message("<@&777> ping", guild=guild)
                 await self.app.on_message(message)
                 message.channel.send.assert_not_awaited()
 
