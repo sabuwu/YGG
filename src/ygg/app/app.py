@@ -49,6 +49,7 @@ class App(discord.Client):
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot:
             return
+        print(f"{message.author}: {message.content}")
 
         parts = (message.content or "").split()
         if len(parts) == 1:

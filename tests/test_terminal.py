@@ -1,5 +1,6 @@
 import asyncio
 import io
+import logging
 import unittest
 from contextlib import redirect_stdout
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -48,6 +49,23 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(session.prompt_async.await_count, 3)
         self.assertNotIn("Comando desconhecido", output)
+
+    async def test_clear_logs_clears_screen_and_disables_logging(self):
+        with patch("ygg.app.ygg_terminal.terminal.logging.disable") as disable_logging:
+            session, output = await self.run_terminal("limpar logs", "exit")
+
+        self.assertEqual(session.prompt_async.await_count, 2)
+        self.assertIn("\x1b[2J\x1b[H", output)
+        self.assertIn("Tela limpa; logs desabilitados.", output)
+        disable_logging.assert_called_once_with(logging.CRITICAL)
+
+    async def test_activate_logs_reenables_logging(self):
+        with patch("ygg.app.ygg_terminal.terminal.logging.disable") as disable_logging:
+            session, output = await self.run_terminal("ativar logs", "exit")
+
+        self.assertEqual(session.prompt_async.await_count, 2)
+        self.assertIn("Logs habilitados.", output)
+        disable_logging.assert_called_once_with(logging.NOTSET)
 
     async def test_unknown_command_displays_guidance_and_keeps_terminal_open(self):
         session, output = await self.run_terminal("inexistente", "exit")

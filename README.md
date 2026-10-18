@@ -287,6 +287,8 @@ iniciado automaticamente quando `sys.stdin.isatty()` retorna `True`.
 | Entrada | Comportamento |
 | --- | --- |
 | `ajuda` ou `help` | Exibe os comandos locais disponíveis. |
+| `limpar logs` | Limpa a tela do terminal e desabilita a saída de logs do processo. |
+| `ativar logs` | Reabilita a saída de logs. |
 | `stop`, `exit`, `quit` ou `bye` | Encerra o console e o bot. |
 | Ctrl+C | Interrompe a execução e encerra o programa. |
 | Fim da entrada, como Ctrl+D em um terminal Unix | Encerra o console e o bot. |
@@ -328,6 +330,11 @@ O contexto `patch_stdout()` permanece ativo durante a execução para que as
 saídas de outras tarefas sejam exibidas junto ao prompt do `prompt-toolkit`.
 O projeto não configura arquivo de logs nem rotação; a saída fica no console
 e pode ser capturada pelo ambiente que executa o processo.
+
+No console interativo, `limpar logs` apaga a tela atual e desabilita os logs
+Python do processo, inclusive os de bibliotecas. Use `ativar logs` para
+reativar a saída. Isso não apaga registros já capturados externamente pelo
+terminal, serviço ou ambiente de execução.
 
 ## Estrutura do projeto
 
