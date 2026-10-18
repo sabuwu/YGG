@@ -34,6 +34,13 @@ class AppCommandsTests(unittest.IsolatedAsyncioTestCase):
             guild=guild,
         )
 
+    async def test_terminal_receives_bot_messages_before_command_filter(self):
+        self.app.terminal = Mock()
+        message = self.message("pong", bot=True)
+        await self.app.on_message(message)
+        self.app.terminal.on_message.assert_called_once_with(message)
+        message.channel.send.assert_not_awaited()
+
     async def test_ping_accepts_text_prefix_and_mentions_with_whitespace_and_case(self):
         for content in (
             "@ygg ping",

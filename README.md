@@ -284,9 +284,31 @@ that a new `/ping` definition was successfully published.
 The local terminal is an interface for controlling the Ygg process. It starts
 automatically when `sys.stdin.isatty()` returns `True`.
 
+The input stays on the penultimate terminal row, above a row of control hints.
+Output remains visible while typing and sending messages. By default, drag
+with the mouse to select text, including channel names, then use your terminal's
+copy shortcut (usually Ctrl+Shift+C). Use PageUp/PageDown to scroll.
+Incoming messages preserve your position while reading older output.
+Press F2 to enable mouse-wheel scrolling; press F2 again to return to native
+text selection. The bottom row shows the active mode. PageUp/PageDown work
+in either mode.
+
+Use `send_message`, select a server, then select a text channel. Entering a
+channel loads its latest 100 messages in chronological order, including
+attachment URLs. Author names use their server nickname and Discord role
+colour, when available; users without a role colour use the terminal's default.
+New messages from that channel appear without interrupting
+your input. The bot needs **View Channel** and **Read Message History**
+permissions to load history. If history cannot be loaded, an error appears
+and you can still try sending messages.
+Use `exit_channel` to select another channel or `exit_server` to select
+another server.
+
 | Input | Behavior |
 | --- | --- |
 | `help` | Displays the available local commands. |
+| `send_message` | Selects a server and channel, loads history, and opens chat. |
+| `exit_channel`, `exit_server` | Leaves the current channel or server while in chat. |
 | `clear logs` | Clears the terminal screen and disables process logging. |
 | `enable logs` | Re-enables logging. |
 | `stop`, `exit`, `quit`, or `bye` | Exits the console and bot. |
@@ -389,7 +411,8 @@ environment.
 3. `run_app()` enters the client's asynchronous context and creates the
    `app.start(token)` task, which authenticates and connects to Discord.
 4. If input is interactive, a second task runs
-   `Terminal().start_terminal()` using `PromptSession.prompt_async()`.
+   `Terminal(app).start_terminal()` using a persistent full-screen
+   `prompt_toolkit` application and asynchronous input.
 5. `asyncio.wait(..., return_when=asyncio.FIRST_COMPLETED)` waits for either
    task to finish.
 6. When the console exits, the client task ends, or a failure occurs, the

@@ -8,6 +8,7 @@ import discord
 from discord import app_commands
 from dotenv import load_dotenv
 from prompt_toolkit.patch_stdout import patch_stdout
+from rich.console import Console
 
 from ygg.app.ygg_terminal.terminal import Terminal
 
@@ -22,11 +23,14 @@ class App(discord.Client):
         intents.message_content = True
         super().__init__(intents=intents)
 
+        self.terminal: Terminal | None = None
         self.DISCORD_API_KEY = os.getenv("DISCORD_API_KEY")
         self.tree = app_commands.CommandTree(self)
         self.tree.command(name="ping", description="Check whether Ygg is responding.")(
             self.ping
         )
+
+        self.console: Console = Console()
 
     async def setup_hook(self) -> None:
         try:
@@ -48,12 +52,20 @@ class App(discord.Client):
         logger.info(f"/ping executed by {interaction.user}.")
 
     async def on_message(self, message: discord.Message) -> None:
+        usuario = message.author
+
+        if self.terminal is not None:
+            self.terminal.on_message(message)
+
         if message.author.bot:
             return
 
-        print(f"{message.author}: {message.content}")
+        if self.terminal is None:
+            self.console.print(f"[{usuario.color}]{message.author}[/{usuario.color}]: {message.content}")
 
-        parts = (message.content or "").split()
+        content = (message.content or "").strip()
+        parts = content.split()
+
         if len(parts) == 1:
             if parts[0].casefold() != "/ping":
                 return
@@ -67,22 +79,21 @@ class App(discord.Client):
                 prefixes.add(bot_role.mention)
 
             prefix, command = parts
-            if prefix.casefold() not in prefixes or command.casefold() != "ping":
+            if prefix.casefold() not in {item.casefold() for item in prefixes}:
+                return
+            if command.casefold() != "ping":
                 return
         else:
             return
-
-        logger.info(f"Message ping received from {message.author}: {message.content}")
-        await message.channel.send("🏓 pong!")
-        logger.info(f"Pong sent to {message.author}.")
 
 
 async def run_app(app: App, token: str) -> None:
     async with app:
         tasks = [asyncio.create_task(app.start(token), name="discord")]
         if sys.stdin.isatty():
+            app.terminal = Terminal(app)
             tasks.append(
-                asyncio.create_task(Terminal(app).start_terminal(), name="terminal")
+                asyncio.create_task(app.terminal.start_terminal(), name="terminal")
             )
         else:
             logger.info("Non-TTY input; running the bot without an interactive prompt.")
@@ -125,3 +136,7 @@ def main() -> None:
             ) from error
         except KeyboardInterrupt:
             print("Goodbye!")
+
+
+if __name__ == "__main__":
+    main()
