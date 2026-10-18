@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 import sys
 
 import discord
@@ -23,7 +24,7 @@ class App(discord.Client):
 
         self.DISCORD_API_KEY = os.getenv("DISCORD_API_KEY")
         self.tree = app_commands.CommandTree(self)
-        self.tree.command(name="ping", description="Verifica se o Ygg está respondendo.")(
+        self.tree.command(name="ping", description="Check whether Ygg is responding.")(
             self.ping
         )
 
@@ -32,23 +33,24 @@ class App(discord.Client):
             commands = await self.tree.sync()
         except discord.HTTPException:
             logger.exception(
-                "Não foi possível sincronizar os comandos /. "
-                "Os comandos por mensagem continuam disponíveis."
+                "Failed to sync / commands. "
+                "Message commands remain available."
             )
         else:
-            logger.info("%d comando(s) / sincronizado(s).", len(commands))
+            logger.info(f"{len(commands)} / command(s) synced.")
 
     async def on_ready(self) -> None:
-        logger.info("Conectado ao Discord como %s. Use @ygg ping ou /ping.", self.user)
+        logger.info(f"Connected to Discord as {self.user}. Use @ygg ping or /ping.")
 
     async def ping(self, interaction: discord.Interaction) -> None:
-        logger.info("/ping recebido de %s.", interaction.user)
+        logger.info(f"/ping received from {interaction.user}.")
         await interaction.response.send_message("🏓 pong!")
-        logger.info("/ping executado por %s.", interaction.user)
+        logger.info(f"/ping executed by {interaction.user}.")
 
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot:
             return
+
         print(f"{message.author}: {message.content}")
 
         parts = (message.content or "").split()
@@ -70,9 +72,9 @@ class App(discord.Client):
         else:
             return
 
-        logger.info("Ping por mensagem recebido de %s: %s", message.author, message.content)
+        logger.info(f"Message ping received from {message.author}: {message.content}")
         await message.channel.send("🏓 pong!")
-        logger.info("Pong enviado para %s.", message.author)
+        logger.info(f"Pong sent to {message.author}.")
 
 
 async def run_app(app: App, token: str) -> None:
@@ -80,10 +82,10 @@ async def run_app(app: App, token: str) -> None:
         tasks = [asyncio.create_task(app.start(token), name="discord")]
         if sys.stdin.isatty():
             tasks.append(
-                asyncio.create_task(Terminal().start_terminal(), name="terminal")
+                asyncio.create_task(Terminal(app).start_terminal(), name="terminal")
             )
         else:
-            logger.info("Entrada sem TTY; o bot será executado sem prompt interativo.")
+            logger.info("Non-TTY input; running the bot without an interactive prompt.")
 
         try:
             done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
@@ -102,24 +104,24 @@ def main() -> None:
     if not app.DISCORD_API_KEY:
         raise RuntimeError("DISCORD_API_KEY not found in .env")
 
-    with patch_stdout():
+    with patch_stdout(raw=True):
+        log_directory = Path("logs")
+        log_directory.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            filename=str(log_directory / "ygg_logs.log"),
+            encoding="utf-8",
             force=True,
         )
 
-        logger.info("Iniciando Ygg...")
+        logger.info("Starting Ygg...")
         try:
             asyncio.run(run_app(app, app.DISCORD_API_KEY))
         except discord.PrivilegedIntentsRequired as error:
             raise RuntimeError(
-                "Ative Message Content Intent em Discord Developer Portal > "
-                "Bot > Privileged Gateway Intents e reinicie o Ygg."
+                "Enable Message Content Intent in Discord Developer Portal > "
+                "Bot > Privileged Gateway Intents, then restart Ygg."
             ) from error
         except KeyboardInterrupt:
-            print("Até mais!")
-
-
-if __name__ == "__main__":
-    main()
+            print("Goodbye!")

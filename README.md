@@ -1,197 +1,198 @@
 # Ygg
 
-Ygg é um bot do Discord escrito em Python, com comandos por mensagem, comando
-`/ping` e um console interativo no terminal que executa o programa. O cliente
-do Discord e o console usam o mesmo loop de eventos do `asyncio`, permitindo
-receber mensagens enquanto o terminal aguarda entrada.
+Ygg is a Discord bot written in Python. It supports message commands, the
+`/ping` application command, and an interactive terminal console that runs
+alongside the bot. The Discord client and console share the same `asyncio`
+event loop, so the bot can receive messages while the terminal waits for input.
 
-A versão atual é **0.1.0**. O projeto oferece uma base pequena para desenvolver
-novos comandos; a funcionalidade disponível no Discord é responder a `ping`
-com `🏓 pong!`.
+The current version is **0.1.0**. This project provides a small foundation
+for building new commands; its current Discord functionality is replying to
+`ping` with `🏓 pong!`.
 
-## Sumário
+## Contents
 
-- [Funcionalidades](#funcionalidades)
-- [Requisitos e dependências](#requisitos-e-dependências)
-- [Configuração do Discord](#configuração-do-discord)
-- [Instalação](#instalação)
-- [Configuração do ambiente](#configuração-do-ambiente)
-- [Execução](#execução)
-- [Comandos do Discord](#comandos-do-discord)
-- [Terminal local](#terminal-local)
+- [Features](#features)
+- [Requirements and dependencies](#requirements-and-dependencies)
+- [Discord setup](#discord-setup)
+- [Installation](#installation)
+- [Environment configuration](#environment-configuration)
+- [Running](#running)
+- [Discord commands](#discord-commands)
+- [Local terminal](#local-terminal)
 - [Logs](#logs)
-- [Estrutura do projeto](#estrutura-do-projeto)
-- [Arquitetura e ciclo de execução](#arquitetura-e-ciclo-de-execução)
-- [Testes](#testes)
-- [Desenvolvimento](#desenvolvimento)
-- [Solução de problemas](#solução-de-problemas)
-- [Limitações atuais](#limitações-atuais)
-- [Autoria e licença](#autoria-e-licença)
+- [Project structure](#project-structure)
+- [Architecture and execution lifecycle](#architecture-and-execution-lifecycle)
+- [Tests](#tests)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [Current limitations](#current-limitations)
+- [Author and license](#author-and-license)
 
-## Funcionalidades
+## Features
 
-- Resposta a `@ygg ping` enviado como texto.
-- Reconhecimento de menções reais ao bot, seguidas de `ping`.
-- Reconhecimento da menção ao cargo gerenciado do próprio bot, seguida de `ping`.
-- Registro e sincronização global do comando `/ping` na inicialização.
-- Resposta a `/ping` quando enviado como mensagem de texto comum.
-- Console local com ajuda e comandos para encerrar o programa.
-- Logs de inicialização, conexão, sincronização e comandos atendidos.
-- Encerramento coordenado do cliente Discord e do console.
-- Execução sem prompt quando a entrada não é um terminal interativo.
-- Testes automatizados que simulam o Discord e a entrada do terminal.
+- Responds to `@ygg ping` sent as text.
+- Recognizes real mentions of the bot followed by `ping`.
+- Recognizes a mention of the bot's managed role followed by `ping`.
+- Registers and globally syncs the `/ping` application command at startup.
+- Responds to `/ping` when sent as a regular text message.
+- Provides a local console to send messages to server text channels, show help,
+  manage logging, and shut down the bot.
+- Logs startup, connection, command sync, and handled commands.
+- Coordinates shutdown of the Discord client and console.
+- Runs without a prompt when standard input is not an interactive terminal.
+- Includes automated tests that simulate Discord and terminal input.
 
-## Requisitos e dependências
+## Requirements and dependencies
 
-Para executar o projeto, são necessários:
+To run the project, you need:
 
-- **Python 3.14 ou superior**. O arquivo `.python-version` seleciona a série
-  **3.14** para ferramentas que respeitam esse arquivo.
-- Acesso à internet para instalar dependências e conectar ao Discord.
-- Uma aplicação com bot no Discord e seu token de autenticação.
-- Permissão para instalar o bot em um servidor onde você possa testá-lo.
-- Um terminal interativo, caso queira utilizar o console local.
+- **Python 3.14 or newer**. The `.python-version` file selects the **3.14**
+  series for tools that honor it.
+- Internet access to install dependencies and connect to Discord.
+- A Discord bot application and its authentication token.
+- Permission to install the bot in a server where you can test it.
+- An interactive terminal if you want to use the local console.
 
-As dependências diretas estão declaradas em [pyproject.toml](pyproject.toml):
+Direct dependencies are declared in [pyproject.toml](pyproject.toml):
 
-| Dependência | Intervalo declarado | Uso |
+| Dependency | Declared range | Purpose |
 | --- | --- | --- |
-| `discord.py` | `>=2.5.0,<3.0.0` | Cliente Discord, eventos, mensagens e comandos `/`. |
-| `python-dotenv` | `>=1.0.1,<2.0.0` | Carregamento de variáveis do arquivo `.env`. |
-| `prompt-toolkit` | `>=3.0.0,<4.0.0` | Prompt assíncrono do terminal. |
+| `discord.py` | `>=2.5.0,<3.0.0` | Discord client, events, messages, and `/` commands. |
+| `python-dotenv` | `>=1.0.1,<2.0.0` | Loads variables from the `.env` file. |
+| `prompt-toolkit` | `>=3.0.0,<4.0.0` | Asynchronous terminal prompt. |
 
-O backend de construção do pacote é `uv_build`, no intervalo
-`>=0.13.1,<0.14.0`. O arquivo [uv.lock](uv.lock) registra as versões resolvidas
-das dependências. Os testes usam `unittest`, da biblioteca padrão do Python.
+The package build backend is `uv_build`, in the `>=0.13.1,<0.14.0` range.
+[uv.lock](uv.lock) records the resolved dependency versions. Tests use
+`unittest` from the Python standard library.
 
-## Configuração do Discord
+## Discord setup
 
-### Criar ou selecionar a aplicação
+### Create or select an application
 
-1. Acesse o [Discord Developer Portal](https://discord.com/developers/applications).
-2. Crie uma aplicação ou abra a aplicação que será utilizada pelo Ygg.
-3. Na seção **Bot**, obtenha o token de autenticação do bot.
-4. Guarde esse token para preencher `DISCORD_API_KEY`, conforme a seção
-   [Configuração do ambiente](#configuração-do-ambiente).
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications).
+2. Create an application or open the application you will use for Ygg.
+3. In the **Bot** section, obtain the bot authentication token.
+4. Keep the token available to set `DISCORD_API_KEY`, as described in
+   [Environment configuration](#environment-configuration).
 
-Use o token do **bot**. O ID da aplicação, a chave pública e o client secret
-são valores diferentes e não substituem essa credencial.
+Use the **bot** token. The application ID, public key, and client secret are
+different values and cannot be used in its place.
 
-### Habilitar o conteúdo das mensagens
+### Enable message content
 
-Na página **Bot > Privileged Gateway Intents**, habilite
-**Message Content Intent** e salve a configuração.
+On the **Bot > Privileged Gateway Intents** page, enable **Message Content
+Intent** and save the setting.
 
-O código já define `intents.message_content = True`. A configuração precisa
-estar habilitada também no portal para que essa conexão seja autorizada.
-O projeto usa esse acesso para interpretar comandos enviados como texto.
-Veja a [documentação de intents do discord.py](https://discordpy.readthedocs.io/en/stable/intents.html).
+The code already sets `intents.message_content = True`. This setting must
+also be enabled in the portal for the connection to be authorized. The
+project uses it to interpret commands sent as text. See the
+[discord.py intents documentation](https://discordpy.readthedocs.io/en/stable/intents.html).
 
-### Instalar no servidor
+### Install the bot in a server
 
-Configure a instalação do bot no servidor com os escopos `bot` e
-`applications.commands`. Utilize o link de instalação da aplicação ou o
-gerador de URL OAuth2 do portal e conclua a autorização no servidor desejado.
+Configure the bot installation with the `bot` and `applications.commands`
+scopes. Use the application's install link or the portal's OAuth2 URL
+generator, then authorize it in the desired server.
 
-No canal usado para testes, o bot deve ter as permissões **View Channels**
-(ver canais) e **Send Messages** (enviar mensagens). As permissões do canal
-também precisam permitir que a pessoa que está testando use comandos de
-aplicação para chamar `/ping`.
+In the channel used for testing, the bot needs **View Channels** and **Send
+Messages** permissions. Channel permissions must also allow the person
+testing the bot to use application commands to invoke `/ping`.
 
-O [guia oficial de criação de bots](https://docs.discord.com/developers/quick-start/getting-started)
-explica a obtenção das credenciais e a instalação de aplicações no Discord.
+The [official bot creation guide](https://docs.discord.com/developers/quick-start/getting-started)
+covers obtaining credentials and installing Discord applications.
 
-## Instalação
+## Installation
 
-Execute os comandos abaixo na raiz da cópia local do projeto, onde estão
-`pyproject.toml` e `uv.lock`.
+Run the commands below from the root of your local project copy, where
+`pyproject.toml` and `uv.lock` are located.
 
-### Com uv
+### With uv
 
-Instale o `uv` conforme as [instruções oficiais](https://docs.astral.sh/uv/getting-started/installation/).
-Depois, prepare o Python e o ambiente:
+Install `uv` using the [official instructions](https://docs.astral.sh/uv/getting-started/installation/).
+Then prepare Python and the environment:
 
 ```sh
 uv python install 3.14
 uv sync --locked
 ```
 
-O comando de sincronização prepara `.venv` e instala o projeto e suas
-dependências usando o lockfile. A opção `--locked` exige que ele esteja
-atualizado em relação ao `pyproject.toml`. Não é necessário ativar o ambiente
-virtual para usar `uv run`. Consulte o [guia de projetos do uv](https://docs.astral.sh/uv/guides/projects/).
+The sync command prepares `.venv` and installs the project and its
+dependencies using the lockfile. The `--locked` option requires the lockfile
+to be up to date with `pyproject.toml`. You do not need to activate the
+virtual environment to use `uv run`. See the [uv projects guide](https://docs.astral.sh/uv/guides/projects/).
 
-### Com venv e pip
+### With venv and pip
 
-Como alternativa, com Python 3.14 instalado, crie um ambiente virtual e
-instale o pacote em modo editável.
+Alternatively, with Python 3.14 installed, create a virtual environment and
+install the package in editable mode.
 
-**Linux ou macOS:**
+**Linux or macOS:**
 
 ```sh
 python3.14 -m venv .venv
 .venv/bin/python -m pip install -e .
 ```
 
-**Windows, no PowerShell:**
+**Windows, in PowerShell:**
 
 ```powershell
 py -3.14 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-A instalação com `pip` respeita os intervalos do `pyproject.toml`; ela não
-utiliza automaticamente o `uv.lock`.
+The `pip` installation follows the ranges in `pyproject.toml`; it does not
+automatically use `uv.lock`.
 
-## Configuração do ambiente
+## Environment configuration
 
-Crie ou edite um arquivo chamado `.env` na raiz do projeto:
+Create or edit a file named `.env` in the project root:
 
 ```dotenv
-DISCORD_API_KEY=COLOQUE_O_TOKEN_DO_BOT_AQUI
+DISCORD_API_KEY=YOUR_BOT_TOKEN_HERE
 ```
 
-Substitua o valor de exemplo pelo token real antes de iniciar o bot.
+Replace the example value with the real token before starting the bot.
 
-| Variável | Obrigatória | Descrição |
+| Variable | Required | Description |
 | --- | --- | --- |
-| `DISCORD_API_KEY` | Sim | Token utilizado para autenticar o cliente no Discord. |
+| `DISCORD_API_KEY` | Yes | Token used to authenticate the Discord client. |
 
-Essa é a única variável de configuração lida diretamente pela aplicação.
-Ela também pode ser fornecida pelo ambiente do processo. Quando uma variável
-já existe no ambiente, `load_dotenv()` preserva esse valor em vez de
-substituí-lo pelo conteúdo do `.env`, conforme a [documentação do python-dotenv](https://bbc2.github.io/python-dotenv/).
+This is the only configuration variable read directly by the application.
+It can also be supplied through the process environment. If the variable
+already exists in the environment, `load_dotenv()` preserves that value
+instead of replacing it with the `.env` value, as described in the
+[python-dotenv documentation](https://bbc2.github.io/python-dotenv/).
 
-O arquivo é carregado durante a importação de `ygg.app.app`. Reinicie o
-programa depois de alterar a configuração. Se `DISCORD_API_KEY` estiver
-ausente ou vazia, a inicialização termina com:
+The file is loaded when `ygg.app.app` is imported. Restart the program after
+changing the configuration. If `DISCORD_API_KEY` is missing or empty, startup
+ends with:
 
 ```text
 RuntimeError: DISCORD_API_KEY not found in .env
 ```
 
-Mantenha o token fora do versionamento. Ao configurar as exclusões do Git,
-inclua `.env`, `.venv/` e `__pycache__/`; o projeto atualmente não fornece
-um arquivo `.gitignore`.
+Keep the token out of version control. The repository's `.gitignore` excludes
+`.env` and `.env.*`; ensure local exclusions also cover `.venv/` and
+`__pycache__/`.
 
-## Execução
+## Running
 
-Depois de instalar as dependências e configurar o token, execute:
+After installing the dependencies and configuring the token, run:
 
 ```sh
 uv run --locked ygg
 ```
 
-O mesmo ponto de entrada pode ser chamado como módulo:
+The same entry point can be invoked as a module:
 
 ```sh
 uv run --locked python -m ygg
 ```
 
-Se estiver usando diretamente o ambiente virtual:
+If you are using the virtual environment directly:
 
 ```sh
-# Linux ou macOS
+# Linux or macOS
 .venv/bin/python -m ygg
 ```
 
@@ -200,59 +201,58 @@ Se estiver usando diretamente o ambiente virtual:
 .\.venv\Scripts\python.exe -m ygg
 ```
 
-O comando de console `ygg` está declarado em `[project.scripts]` e aponta
-para `ygg.__main__:main`. A execução como módulo passa pelo mesmo `main()`.
-O arquivo `src/ygg/app/app.py` também chama `main()` quando executado
-diretamente, permitindo iniciar o bot pelo arquivo ativo da IDE com o
-ambiente virtual do projeto selecionado.
-Abra o terminal integrado da IDE para utilizar o console local; consoles de
-depuração ou painéis de saída podem não oferecer entrada interativa.
+The `ygg` console command is declared in `[project.scripts]` and points to
+`ygg.__main__:main`. Running it as a module uses the same `main()`. The
+`src/ygg/app/app.py` file also calls `main()` when run directly, so you can
+start the bot from the IDE's active file with the project's virtual
+environment selected. Open the IDE's integrated terminal to use the local
+console; debug consoles and output panels might not provide interactive input.
 
-Durante uma inicialização bem-sucedida, aparecem mensagens como:
+On a successful startup, you will see messages similar to:
 
 ```text
-Iniciando Ygg...
-Terminal do YGG iniciado.
-Comandos locais: ajuda/help para ver esta mensagem; stop/exit/quit/bye para encerrar o bot.
-1 comando(s) / sincronizado(s).
-Conectado ao Discord como <nome do bot>. Use @ygg ping ou /ping.
+Starting Ygg...
+YGG terminal started.
+Local commands: help to show this message; clear logs to clear the screen and disable logging; enable logs to re-enable logging; stop/exit/quit/bye to shut down the bot.
+1 / command(s) synced.
+Connected to Discord as <bot name>. Use @ygg ping or /ping.
 YGG >
 ```
 
-O exemplo omite os prefixos de data e nível dos logs. A ordem das mensagens
-pode variar porque a conexão e o terminal são executados de forma concorrente.
-A presença do prompt, por si só, não confirma a conexão: aguarde o log
-`Conectado ao Discord como ...`.
+The example omits the date and log-level prefixes. Message order may vary
+because the connection and terminal run concurrently. Seeing the prompt by
+itself does not confirm that the bot connected; wait for the
+`Connected to Discord as ...` log.
 
-## Comandos do Discord
+## Discord commands
 
-### Ping por mensagem
+### Message-based ping
 
-| Forma | Como enviar | Resposta |
+| Form | How to send it | Response |
 | --- | --- | --- |
-| Prefixo literal | Digite `@ygg ping` como texto. | `🏓 pong!` |
-| Menção real | Selecione o bot na lista de menções do Discord e acrescente `ping`. | `🏓 pong!` |
-| Menção ao cargo do bot | Selecione o cargo gerenciado do Ygg e acrescente `ping`. | `🏓 pong!` |
-| Texto `/ping` | Envie `/ping` como mensagem comum, mesmo sem selecionar o comando no menu. | `🏓 pong!` |
+| Literal prefix | Type `@ygg ping` as text. | `🏓 pong!` |
+| Real mention | Select the bot from Discord's mention list and add `ping`. | `🏓 pong!` |
+| Bot role mention | Select Ygg's managed role and add `ping`. | `🏓 pong!` |
+| `/ping` text | Send `/ping` as a regular message, without selecting the command from the menu. | `🏓 pong!` |
 
-O prefixo textual `@ygg` é fixo e independe do nome ou apelido do bot no
-servidor. Uma menção real é identificada pelo ID do próprio bot, nos formatos
-internos `<@ID>` e `<@!ID>`.
-O cargo gerenciado do próprio bot é identificado por `guild.self_role`, no
-formato `<@&ID_DO_CARGO>`. Outros cargos, mesmo com o mesmo nome, não são
-aceitos como prefixo. Usuários e cargos têm formatos de menção distintos na
-[documentação do Discord](https://docs.discord.com/developers/reference#message-formatting).
+The textual `@ygg` prefix is fixed and does not depend on the bot's name or
+nickname in the server. A real mention is identified by the bot's own ID, in
+the internal formats `<@ID>` and `<@!ID>`. The bot's managed role is
+identified by `guild.self_role`, in the `<@&ROLE_ID>` format. Other roles are
+not accepted as a prefix, even if they have the same name. User and role
+mentions use distinct formats in the
+[Discord documentation](https://docs.discord.com/developers/reference#message-formatting).
 
-O interpretador de mensagens segue estas regras:
+The message parser follows these rules:
 
-- Aceita dois elementos: o prefixo ou a menção, seguido de `ping`; também
-  aceita `/ping` sozinho como atalho textual.
-- Ignora diferenças entre maiúsculas e minúsculas no prefixo textual e no comando.
-- Aceita espaços extras, tabulações e quebras de linha entre os elementos.
-- Ignora mensagens enviadas por bots, inclusive pelo próprio Ygg.
-- Ignora menções a outros usuários ou cargos, comandos desconhecidos e argumentos adicionais.
+- Accepts two tokens: the prefix or mention, followed by `ping`; it also
+  accepts `/ping` alone as a textual shortcut.
+- Ignores case differences in the text prefix and command.
+- Accepts extra spaces, tabs, and line breaks between tokens.
+- Ignores messages sent by bots, including Ygg itself.
+- Ignores mentions of other users or roles, unknown commands, and extra arguments.
 
-Exemplos de texto aceito:
+Examples of accepted text:
 
 ```text
 @ygg ping
@@ -260,274 +260,276 @@ Exemplos de texto aceito:
    @ygg    ping
 ```
 
-Mensagens como `ping`, `@yggping`, `@ygg ping agora` ou `@ygg ajuda` não
-produzem resposta na implementação atual.
+Messages such as `ping`, `@yggping`, `@ygg ping now`, or `@ygg help` do not
+receive a response in the current implementation.
 
-### Ping por comando de aplicação
+### Application-command ping
 
-Digite `/ping` no Discord e selecione o comando da aplicação Ygg. A resposta
-também é `🏓 pong!` e é enviada publicamente na interação.
-Se `/ping` for enviado como uma mensagem comum, o bot responde pelo
-tratamento de mensagens. Esse atalho funciona junto ao comando de aplicação.
+Type `/ping` in Discord and select Ygg's application command. The response
+is also `🏓 pong!` and is sent publicly in the interaction. If `/ping` is
+sent as a regular message, the bot responds through message handling. This
+shortcut works alongside the application command.
 
-O comando é registrado em `App.__init__()` e sincronizado globalmente em
-`setup_hook()`. Não há seleção de servidor de desenvolvimento no código.
-A [documentação de CommandTree.sync()](https://discordpy.readthedocs.io/en/stable/interactions/api.html#discord.app_commands.CommandTree.sync)
-descreve a sincronização dos comandos com o Discord.
+The command is registered in `App.__init__()` and globally synced in
+`setup_hook()`. The code does not select a development server. The
+[CommandTree.sync() documentation](https://discordpy.readthedocs.io/en/stable/interactions/api.html#discord.app_commands.CommandTree.sync)
+describes syncing commands with Discord.
 
-Se a sincronização lançar `discord.HTTPException`, o erro é registrado e a
-inicialização continua, permitindo usar os comandos por mensagem. Isso não
-garante que uma nova definição de `/ping` tenha sido publicada com sucesso.
+If syncing raises `discord.HTTPException`, the error is logged and startup
+continues, allowing message commands to be used. This does not guarantee
+that a new `/ping` definition was successfully published.
 
-## Terminal local
+## Local terminal
 
-O terminal local é uma interface para controlar o processo do Ygg. Ele é
-iniciado automaticamente quando `sys.stdin.isatty()` retorna `True`.
+The local terminal is an interface for controlling the Ygg process. It starts
+automatically when `sys.stdin.isatty()` returns `True`.
 
-| Entrada | Comportamento |
+| Input | Behavior |
 | --- | --- |
-| `ajuda` ou `help` | Exibe os comandos locais disponíveis. |
-| `limpar logs` | Limpa a tela do terminal e desabilita a saída de logs do processo. |
-| `ativar logs` | Reabilita a saída de logs. |
-| `stop`, `exit`, `quit` ou `bye` | Encerra o console e o bot. |
-| Ctrl+C | Interrompe a execução e encerra o programa. |
-| Fim da entrada, como Ctrl+D em um terminal Unix | Encerra o console e o bot. |
-| Linha vazia | Mantém o console aberto, sem executar uma ação. |
-| Outro texto | Exibe uma mensagem de comando desconhecido e mantém o console aberto. |
+| `help` | Displays the available local commands. |
+| `clear logs` | Clears the terminal screen and disables process logging. |
+| `enable logs` | Re-enables logging. |
+| `stop`, `exit`, `quit`, or `bye` | Exits the console and bot. |
+| Ctrl+C | Interrupts execution and exits the program. |
+| End of input, such as Ctrl+D in a Unix terminal | Exits the console and bot. |
+| Empty line | Keeps the console open without taking action. |
+| Other text | Displays an unknown-command message and keeps the console open. |
 
-Os comandos locais ignoram maiúsculas, minúsculas e espaços nas extremidades.
-Por exemplo, `EXIT` e `  exit  ` têm o mesmo efeito.
+Local commands ignore letter case and leading or trailing whitespace. For
+example, `EXIT` and `  exit  ` have the same effect.
 
-Os comandos `ping` e `/ping` são usados no Discord. Digitá-los no console
-local resulta na mensagem de comando desconhecido.
+The `ping` and `/ping` commands are used in Discord. Typing them in the local
+console displays the unknown-command message.
 
-### Execução sem TTY
+### Running without a TTY
 
-Quando a entrada não é interativa, como em certos serviços, redirecionamentos
-ou consoles de IDE, o prompt não é criado. O programa registra:
+When input is non-interactive, as in some services, redirections, or IDE
+consoles, the prompt is not created. The program logs:
 
 ```text
-Entrada sem TTY; o bot será executado sem prompt interativo.
+Non-TTY input; running the bot without an interactive prompt.
 ```
 
-Nesse modo, o cliente Discord continua executando e os logs permanecem
-disponíveis. Para encerrar, use a interrupção ou o controle do processo
-oferecido pelo terminal ou pelo serviço responsável por executá-lo.
+In this mode, the Discord client keeps running and logs remain available. To
+stop it, use an interrupt or the process control provided by the terminal or
+service running it.
 
 ## Logs
 
-A aplicação configura o módulo `logging` no nível `INFO`, com o formato:
+The application configures the `logging` module at the `INFO` level, with
+this format:
 
 ```text
-<data e hora> [<nível>] <logger>: <mensagem>
+<date and time> [<level>] <logger>: <message>
 ```
 
-São registrados a inicialização, o resultado da sincronização de comandos,
-a identidade conectada e cada `ping` atendido. Falhas HTTP na sincronização
-incluem o traceback para diagnóstico.
+Startup, command-sync results, the connected identity, and each handled
+`ping` are logged. HTTP sync failures include a traceback for diagnosis.
 
-O contexto `patch_stdout()` permanece ativo durante a execução para que as
-saídas de outras tarefas sejam exibidas junto ao prompt do `prompt-toolkit`.
-O projeto não configura arquivo de logs nem rotação; a saída fica no console
-e pode ser capturada pelo ambiente que executa o processo.
+Logs are written to `logs/ygg_logs.log`, relative to the directory from
+which the program was started. The `logs` directory is created automatically.
+The file is retained between runs and is not rotated automatically.
 
-No console interativo, `limpar logs` apaga a tela atual e desabilita os logs
-Python do processo, inclusive os de bibliotecas. Use `ativar logs` para
-reativar a saída. Isso não apaga registros já capturados externamente pelo
-terminal, serviço ou ambiente de execução.
+In the interactive console, `clear logs` clears the current screen and
+disables Python process logging, including logs from libraries. Use
+`enable logs` to turn logging back on. This does not delete entries already
+written to the file.
 
-## Estrutura do projeto
+## Project structure
 
 ```text
 YGG/
-├── .env                              # Configuração local com o token
-├── .python-version                   # Série de Python utilizada pelo uv
-├── pyproject.toml                    # Metadados, dependências e entrada ygg
-├── uv.lock                           # Versões resolvidas das dependências
-├── README.md                         # Documentação do projeto
+├── .env                              # Local configuration containing the token
+├── .python-version                   # Python series used by uv
+├── pyproject.toml                    # Metadata, dependencies, and ygg entry point
+├── uv.lock                           # Resolved dependency versions
+├── README.md                         # Project documentation
 ├── src/
 │   └── ygg/
 │       ├── __init__.py
-│       ├── __main__.py               # Entrada por python -m ygg
+│       ├── __main__.py               # Entry point for python -m ygg
 │       └── app/
 │           ├── __init__.py
-│           ├── app.py                # Cliente, comandos e coordenação das tarefas
+│           ├── app.py                # Client, commands, and task coordination
 │           └── ygg_terminal/
 │               ├── __init__.py
-│               └── terminal.py       # Prompt e comandos locais
+│               └── terminal.py       # Prompt and local commands
 └── tests/
-    ├── test_app.py                   # Comandos Discord e ciclo de execução
-    ├── test_entrypoints.py           # Execução direta, como módulo e importação
-    ├── test_gateway.py               # Payloads reais dos eventos do discord.py
-    └── test_terminal.py              # Entrada, ajuda, saída e cancelamento
+    ├── test_app.py                   # Discord commands and execution lifecycle
+    ├── test_entrypoints.py           # Direct execution, module execution, and import
+    ├── test_gateway.py               # Real discord.py event payloads
+    └── test_terminal.py              # Input, help, exit, and cancellation
 ```
 
-O diretório `.venv/` é criado durante a instalação e foi omitido da árvore.
-O arquivo `.env` é uma configuração local, que deve ser criado em cada ambiente.
+The `.venv/` directory is created during installation and is omitted from the
+tree. The `.env` file is local configuration and must be created in each
+environment.
 
-## Arquitetura e ciclo de execução
+## Architecture and execution lifecycle
 
-### Componentes
+### Components
 
-| Componente | Responsabilidade |
+| Component | Responsibility |
 | --- | --- |
-| `ygg.__main__` | Expõe `main()` e inicia a aplicação quando o pacote é executado como módulo. |
-| `App` | Especializa `discord.Client`, configura intents e registra a árvore de comandos. |
-| `App.setup_hook()` | Sincroniza os comandos de aplicação antes da conexão ao Gateway. |
-| `App.on_ready()` | Registra a identidade do bot conectado. |
-| `App.on_message()` | Interpreta o comando textual ou a menção e responde ao `ping`. |
-| `App.ping()` | Responde à interação `/ping`. |
-| `run_app()` | Coordena as tarefas do cliente e do terminal e aguarda seu encerramento. |
-| `Terminal.start_terminal()` | Aguarda entrada assíncrona e trata os comandos locais. |
+| `ygg.__main__` | Exposes `main()` and starts the application when the package runs as a module. |
+| `App` | Extends `discord.Client`, configures intents, and registers the command tree. |
+| `App.setup_hook()` | Syncs application commands before connecting to the Gateway. |
+| `App.on_ready()` | Logs the connected bot identity. |
+| `App.on_message()` | Parses text commands or mentions and responds to `ping`. |
+| `App.ping()` | Responds to the `/ping` interaction. |
+| `run_app()` | Coordinates the client and terminal tasks and waits for shutdown. |
+| `Terminal.start_terminal()` | Awaits asynchronous input and handles local commands. |
+| `Terminal.send_message()` | Selects a server and text channel, then sends a terminal-provided message. |
 
-### Fluxo
+### Flow
 
-1. A importação de `app.py` carrega as variáveis do `.env`.
-2. `main()` cria o cliente, verifica o token, configura os logs e abre o
-   loop com `asyncio.run()`.
-3. `run_app()` entra no contexto assíncrono do cliente e cria a tarefa
-   `app.start(token)`, responsável por autenticar e conectar ao Discord.
-4. Se houver entrada interativa, uma segunda tarefa executa
-   `Terminal().start_terminal()` usando `PromptSession.prompt_async()`.
-5. `asyncio.wait(..., return_when=asyncio.FIRST_COMPLETED)` aguarda o término
-   de uma das tarefas.
-6. Ao sair do console, terminar a tarefa do cliente ou ocorrer uma falha,
-   as tarefas restantes são canceladas e aguardadas. O contexto do cliente
-   fecha a conexão e os recursos associados.
+1. Importing `app.py` loads variables from `.env`.
+2. `main()` creates the client, checks the token, configures logging, and
+   starts the event loop with `asyncio.run()`.
+3. `run_app()` enters the client's asynchronous context and creates the
+   `app.start(token)` task, which authenticates and connects to Discord.
+4. If input is interactive, a second task runs
+   `Terminal().start_terminal()` using `PromptSession.prompt_async()`.
+5. `asyncio.wait(..., return_when=asyncio.FIRST_COMPLETED)` waits for either
+   task to finish.
+6. When the console exits, the client task ends, or a failure occurs, the
+   remaining tasks are cancelled and awaited. The client context closes the
+   connection and associated resources.
 
-O uso de `prompt_async()` permite aguardar uma linha sem bloquear o
-processamento dos eventos do Discord. Consulte a [documentação de prompts assíncronos](https://python-prompt-toolkit.readthedocs.io/en/stable/pages/asking_for_input.html#prompt-in-an-asyncio-application).
+Using `prompt_async()` lets the application wait for a line without blocking
+Discord event processing. See the
+[asynchronous prompts documentation](https://python-prompt-toolkit.readthedocs.io/en/stable/pages/asking_for_input.html#prompt-in-an-asyncio-application).
 
-## Testes
+## Tests
 
-Para executar toda a suíte:
+Run the complete test suite with:
 
 ```sh
 uv run --locked python -m unittest discover -s tests -v
 ```
 
-Com o ambiente virtual já preparado, também é possível executar:
+With the virtual environment already prepared, you can also run:
 
 ```sh
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-No Windows, substitua `.venv/bin/python` por `.\.venv\Scripts\python.exe`.
+On Windows, replace `.venv/bin/python` with `\.venv\Scripts\python.exe`.
 
-Para executar somente uma parte da suíte:
+To run only part of the suite:
 
 ```sh
 uv run --locked python -m unittest discover -s tests -p 'test_app.py' -v
 uv run --locked python -m unittest discover -s tests -p 'test_terminal.py' -v
 ```
 
-A suíte cobre a aplicação, seus pontos de entrada, o processamento de eventos
-do Gateway e o terminal. Os testes verificam:
+The suite covers the application, its entry points, Gateway event processing,
+and the terminal. Tests verify:
 
-- Prefixo textual, menções reais, variações de caixa e espaços.
-- Menção ao cargo gerenciado do próprio bot e `/ping` enviado como texto.
-- Mensagens de bots, menções a outros usuários e entradas não reconhecidas.
-- Registro e resposta de `/ping` e sincronização da árvore de comandos.
-- Continuidade dos comandos por mensagem após falha HTTP na sincronização.
-- Execução do cliente e do terminal no mesmo loop.
-- Cancelamento das tarefas e fechamento do cliente em saída ou falha.
-- Execução sem TTY.
-- Ajuda, comandos de saída, entrada vazia, texto desconhecido, EOF e Ctrl+C.
-- Propagação do cancelamento do terminal.
-- Execução direta de `app.py`, execução como módulo e importação sem iniciar o bot.
-- Encaminhamento de `MESSAGE_CREATE` e `INTERACTION_CREATE` pelos parsers
-  reais do `discord.py`, com as saídas HTTP substituídas nos testes.
+- Text prefixes, real mentions, case variations, and whitespace.
+- The bot's managed role mention and `/ping` sent as text.
+- Messages from bots, mentions of other users, and unrecognized input.
+- Registration and response for `/ping`, and command-tree syncing.
+- Message commands remaining available after an HTTP sync failure.
+- The client and terminal running on the same event loop.
+- Task cancellation and client closure on exit or failure.
+- Execution without a TTY.
+- Help, message sending, exit commands, empty input, unknown text, EOF, and Ctrl+C.
+- Propagation of terminal cancellation.
+- Direct execution of `app.py`, module execution, and import without starting the bot.
+- `MESSAGE_CREATE` and `INTERACTION_CREATE` dispatch through real
+  `discord.py` parsers, with HTTP outputs replaced in tests.
 
-Os testes usam `unittest.IsolatedAsyncioTestCase`, mocks e tokens fictícios.
-Eles não leem o `.env` real nem se conectam ao Discord. Portanto, não validam
-o token, as permissões do servidor ou a conectividade de um ambiente real.
+Tests use `unittest.IsolatedAsyncioTestCase`, mocks, and fake tokens. They do
+not read the real `.env` file or connect to Discord. As a result, they do not
+validate the token, server permissions, or connectivity in a real environment.
 
-## Desenvolvimento
+## Development
 
-### Adicionar um comando de aplicação
+### Add an application command
 
-Os comandos atuais ficam em [src/ygg/app/app.py](src/ygg/app/app.py).
-Para adicionar, por exemplo, `/ola`:
+Current commands are in [src/ygg/app/app.py](src/ygg/app/app.py). To add, for
+example, `/hello`:
 
-1. Crie uma coroutine na classe `App` com um parâmetro `discord.Interaction`.
-2. Registre essa coroutine na árvore dentro de `App.__init__()`, depois da
-   criação de `self.tree`.
-3. Reinicie o bot para executar a sincronização e teste a interação no Discord.
+1. Create a coroutine in the `App` class with a `discord.Interaction` parameter.
+2. Register the coroutine in the command tree inside `App.__init__()`, after
+   `self.tree` is created.
+3. Restart the bot to sync the command, then test the interaction in Discord.
 
-Exemplo de método a adicionar à classe `App`:
-
-```python
-async def ola(self, interaction: discord.Interaction) -> None:
-    await interaction.response.send_message("Olá!")
-```
-
-Registro correspondente dentro de `__init__()`:
+Example method to add to the `App` class:
 
 ```python
-self.tree.command(name="ola", description="Envia uma saudação.")(self.ola)
+async def hello(self, interaction: discord.Interaction) -> None:
+    await interaction.response.send_message("Hello!")
 ```
 
-Esse registro cria o comando de aplicação. Para oferecer também `@ygg ola`,
-adicione o tratamento correspondente em `on_message()`, preservando as
-verificações de autor e prefixo. Os dois caminhos são implementados separadamente.
+Corresponding registration inside `__init__()`:
 
-### Adicionar um comando local
+```python
+self.tree.command(name="hello", description="Send a greeting.")(self.hello)
+```
 
-Edite [src/ygg/app/ygg_terminal/terminal.py](src/ygg/app/ygg_terminal/terminal.py)
-e acrescente o tratamento depois da normalização da entrada e antes da
-mensagem de comando desconhecido. Use operações assíncronas para tarefas
-que precisam aguardar; chamadas bloqueantes nesse loop atrasam também o bot.
+This registration creates an application command. To also support `@ygg
+hello`, add the corresponding handling to `on_message()`, preserving the
+author and prefix checks. The two paths are implemented separately.
 
-### Alterar dependências
+### Add a local command
 
-No fluxo com `uv`, adicione uma dependência com:
+Edit [src/ygg/app/ygg_terminal/terminal.py](src/ygg/app/ygg_terminal/terminal.py)
+and add handling after input normalization and before the unknown-command
+message. Use asynchronous operations for tasks that need to wait; blocking
+calls in this loop also delay the bot.
+
+### Change dependencies
+
+With the `uv` workflow, add a dependency using:
 
 ```sh
-uv add nome-do-pacote
+uv add package-name
 ```
 
-O `uv` atualiza o manifesto e o lockfile. Se editar `pyproject.toml`
-manualmente, atualize a resolução e o ambiente:
+`uv` updates the manifest and lockfile. If you edit `pyproject.toml`
+manually, update the resolution and environment:
 
 ```sh
 uv lock
 uv sync --locked
 ```
 
-Revise as alterações de `pyproject.toml` e `uv.lock` em conjunto e execute
-a suíte de testes depois de modificar o comportamento do projeto.
+Review changes to `pyproject.toml` and `uv.lock` together, and run the test
+suite after changing project behavior.
 
-## Solução de problemas
+## Troubleshooting
 
-| Sintoma | O que verificar |
+| Symptom | What to check |
 | --- | --- |
-| `DISCORD_API_KEY not found in .env` | Configure um valor não vazio no `.env` da raiz ou no ambiente do processo e reinicie o programa. |
-| `discord.errors.LoginFailure` ou falha de autenticação | Confira se a credencial é o token atual do bot. Se ela foi substituída no portal, atualize o ambiente utilizado pelo processo. |
-| Erro pedindo para ativar `Message Content Intent` | Habilite o intent na seção Bot do portal, salve e reinicie. O código já solicita esse acesso. |
-| O bot conecta, mas não responde a `@ygg ping` | Confira o texto exato, o acesso ao canal e a permissão de envio. Teste também uma menção real ao próprio bot seguida de `ping`. |
-| `/ping` não aparece | Confira a instalação com `applications.commands` e o resultado da sincronização nos logs. Confirme que está selecionando a aplicação correta no Discord. |
-| Log `Não foi possível sincronizar os comandos /` | Leia a exceção registrada para identificar a falha de API ou permissão. Os comandos por mensagem permanecem disponíveis se a conexão for concluída. |
-| Mensagem de entrada sem TTY e ausência de `YGG > ` | Execute em um terminal interativo. Esse comportamento é esperado em painéis sem entrada de teclado. |
-| O comportamento continua antigo depois de alterar o código | Encerre a instância atual e inicie novamente com `uv run -m ygg`. O processo em execução não recarrega os arquivos automaticamente. |
-| `ModuleNotFoundError: No module named 'ygg'` | Instale o projeto com `uv sync --locked` ou `python -m pip install -e .` no ambiente usado para executar. |
-| Pacotes não encontrados ou versão de Python incompatível | Confira se a IDE e o terminal usam o ambiente `.venv` preparado com Python 3.14 ou superior. |
-| Falhas de conexão ao Discord | Consulte os logs e verifique o acesso à rede do processo. |
+| `DISCORD_API_KEY not found in .env` | Set a non-empty value in the root `.env` or process environment, then restart the program. |
+| `discord.errors.LoginFailure` or authentication failure | Check that the credential is the bot's current token. If it was reset in the portal, update the environment used by the process. |
+| Error asking to enable `Message Content Intent` | Enable the intent in the portal's Bot section, save, and restart. The code already requests this access. |
+| The bot connects but does not respond to `@ygg ping` | Check the exact text, channel access, and send permission. Also test a real mention of the bot followed by `ping`. |
+| `/ping` does not appear | Check the installation's `applications.commands` scope and the sync result in the logs. Make sure you selected the correct Discord application. |
+| `Failed to sync / commands` log | Read the logged exception to identify an API or permission failure. Message commands remain available if the connection succeeds. |
+| Non-TTY input message and no `YGG > ` prompt | Run in an interactive terminal. This is expected in panels without keyboard input. |
+| Behavior is unchanged after editing the code | Stop the current instance and restart with `uv run -m ygg`. A running process does not reload files automatically. |
+| `ModuleNotFoundError: No module named 'ygg'` | Install the project with `uv sync --locked` or `python -m pip install -e .` in the environment used to run it. |
+| Packages are missing or Python version is incompatible | Check that the IDE and terminal use the `.venv` environment prepared with Python 3.14 or newer. |
+| Discord connection failures | Check the logs and verify that the process has network access. |
 
-## Limitações atuais
+## Current limitations
 
-- O único comando funcional no Discord é `ping`; os exemplos de extensão
-  desta documentação precisam ser implementados para ficarem disponíveis.
-- O prefixo textual é definido no código e não possui configuração por servidor.
-- O terminal local oferece ajuda e encerramento, sem envio de comandos ao Discord.
-- A sincronização de comandos de aplicação é global e ocorre na inicialização.
-- O projeto não implementa banco de dados, armazenamento de configurações,
-  painel web, comandos de voz ou integração com serviços de IA.
-- Não há configuração própria de hospedagem, serviço de sistema ou reinício
-  automático do processo.
+- The only functional Discord command is `ping`; examples for extending this
+  documentation must be implemented before they become available.
+- The text prefix is hard-coded and cannot be configured per server.
+- The local terminal sends messages only to text channels; it does not support voice channels.
+- Application commands are globally synced at startup.
+- The project does not implement a database, settings storage, web dashboard,
+  voice commands, or integration with AI services.
+- No dedicated hosting, system service, or automatic process restart
+  configuration is provided.
 
-## Autoria e licença
+## Author and license
 
-O autor declarado no `pyproject.toml` é **sabuwu**.
+The author listed in `pyproject.toml` is **sabuwu**.
 
-O repositório ainda não contém um arquivo de licença nem uma licença declarada
-nos metadados do pacote.
+The repository does not yet contain a license file or a license declared in
+the package metadata.

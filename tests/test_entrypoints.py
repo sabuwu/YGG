@@ -23,13 +23,18 @@ class EntrypointTests(unittest.TestCase):
             patch("dotenv.load_dotenv"),
             patch.dict(os.environ, {"DISCORD_API_KEY": "test-discord-token"}, clear=True),
             patch("prompt_toolkit.patch_stdout.patch_stdout", return_value=nullcontext()),
-            patch("logging.basicConfig"),
+            patch("pathlib.Path.mkdir") as mkdir,
+            patch("logging.basicConfig") as basic_config,
             patch("asyncio.run", side_effect=close_without_running) as run,
         ):
             runpy.run_path(str(APP_PATH), run_name="__main__")
 
         run.assert_called_once()
         self.assertEqual(run.call_args.args[0].cr_code.co_name, "run_app")
+        mkdir.assert_called_once_with(parents=True, exist_ok=True)
+        self.assertEqual(
+            basic_config.call_args.kwargs["filename"], "logs/ygg_logs.log"
+        )
 
     def test_package_execution_calls_main_once(self):
         with patch("dotenv.load_dotenv"):

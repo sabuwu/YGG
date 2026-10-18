@@ -1,7 +1,7 @@
 [project]
 name = "ygg"
 version = "0.1.0"
-description = "Add your description here"
+description = "A Discord bot with message and application commands, plus an interactive terminal."
 readme = "README.md"
 authors = [
     { name = "sabuwu", email = "sabuwu091@gmail.com" }
@@ -11,6 +11,7 @@ dependencies = [
     "discord.py>=2.5.0,<3.0.0",
     "python-dotenv>=1.0.1,<2.0.0",
     "prompt-toolkit>=3.0.0,<4.0.0",
+    "rich>=15.0.0",
 ]
 
 [project.scripts]
