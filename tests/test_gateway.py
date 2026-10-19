@@ -1,8 +1,6 @@
 """Exercise command dispatch through discord.py's real Gateway event parsers."""
 
 import asyncio
-import importlib
-import os
 from pathlib import Path
 import sys
 from unittest import IsolatedAsyncioTestCase, main
@@ -13,8 +11,7 @@ from discord.webhook.async_ import async_context
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-with patch("dotenv.load_dotenv"):
-    app_module = importlib.import_module("ygg.app.app")
+from ygg.app.discord_bot.client import App
 
 
 BOT_ID = 123456789
@@ -41,8 +38,7 @@ USER = {
 
 class GatewayCommandsTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        with patch.dict(os.environ, {"DISCORD_API_KEY": "test-token"}, clear=True):
-            self.app = app_module.App()
+        self.app = App()
         await self.app.__aenter__()
         self.state = self.app._connection
         self.state.user = discord.ClientUser(state=self.state, data=BOT)

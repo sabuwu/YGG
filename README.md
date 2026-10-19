@@ -60,6 +60,7 @@ Direct dependencies are declared in [pyproject.toml](pyproject.toml):
 | `discord.py` | `>=2.5.0,<3.0.0` | Discord client, events, messages, and `/` commands. |
 | `python-dotenv` | `>=1.0.1,<2.0.0` | Loads variables from the `.env` file. |
 | `prompt-toolkit` | `>=3.0.0,<4.0.0` | Asynchronous terminal prompt. |
+| `rich` | `>=15.0.0` | Displays Discord messages when the interactive console is disabled. |
 
 The package build backend is `uv_build`, in the `>=0.13.1,<0.14.0` range.
 [uv.lock](uv.lock) records the resolved dependency versions. Tests use
@@ -143,6 +144,10 @@ py -3.14 -m venv .venv
 The `pip` installation follows the ranges in `pyproject.toml`; it does not
 automatically use `uv.lock`.
 
+From the project root, `python -m pip install -r requirements.txt` is also
+supported. That file delegates to `-e .`, keeping dependency declarations in
+`pyproject.toml`.
+
 ## Environment configuration
 
 Create or edit a file named `.env` in the project root:
@@ -163,17 +168,17 @@ already exists in the environment, `load_dotenv()` preserves that value
 instead of replacing it with the `.env` value, as described in the
 [python-dotenv documentation](https://bbc2.github.io/python-dotenv/).
 
-The file is loaded when `ygg.app.app` is imported. Restart the program after
-changing the configuration. If `DISCORD_API_KEY` is missing or empty, startup
-ends with:
+`main()` loads the file and validates the token through
+`ygg.app.core.config.load_token()` during startup. Importing application modules
+does not load `.env` or start the bot. Restart the program after changing the
+configuration. If `DISCORD_API_KEY` is missing or empty, startup ends with:
 
 ```text
 RuntimeError: DISCORD_API_KEY not found in .env
 ```
 
 Keep the token out of version control. The repository's `.gitignore` excludes
-`.env` and `.env.*`; ensure local exclusions also cover `.venv/` and
-`__pycache__/`.
+`.env`, `.env.*`, `.venv/`, `__pycache__/`, and compiled Python files.
 
 ## Running
 
@@ -208,21 +213,17 @@ start the bot from the IDE's active file with the project's virtual
 environment selected. Open the IDE's integrated terminal to use the local
 console; debug consoles and output panels might not provide interactive input.
 
-On a successful startup, you will see messages similar to:
+The interactive console starts with:
 
 ```text
-Starting Ygg...
 YGG terminal started.
-Local commands: help to show this message; clear logs to clear the screen and disable logging; enable logs to re-enable logging; stop/exit/quit/bye to shut down the bot.
-1 / command(s) synced.
-Connected to Discord as <bot name>. Use @ygg ping or /ping.
-YGG >
+Local commands: send_message to enter a server and text channel; exit_channel to return to that server's channel list; exit_server to return to the server list; help to show this message; clear logs to clear the screen and disable logging; enable logs to re-enable logging; stop/exit/quit/bye to shut down the bot.
+ >>>
 ```
 
-The example omits the date and log-level prefixes. Message order may vary
-because the connection and terminal run concurrently. Seeing the prompt by
-itself does not confirm that the bot connected; wait for the
-`Connected to Discord as ...` log.
+The prompt alone does not confirm that the bot connected. Startup,
+command-sync results, and `Connected to Discord as ...` are recorded in
+`logs/ygg_logs.log` while the connection and terminal run concurrently.
 
 ## Discord commands
 
@@ -270,8 +271,8 @@ is also `🏓 pong!` and is sent publicly in the interaction. If `/ping` is
 sent as a regular message, the bot responds through message handling. This
 shortcut works alongside the application command.
 
-The command is registered in `App.__init__()` and globally synced in
-`setup_hook()`. The code does not select a development server. The
+`DiscordCommands` registers the command, and `App.setup_hook()` globally syncs
+the command tree at startup. The code does not select a development server. The
 [CommandTree.sync() documentation](https://discordpy.readthedocs.io/en/stable/interactions/api.html#discord.app_commands.CommandTree.sync)
 describes syncing commands with Discord.
 
@@ -302,7 +303,7 @@ your input. The bot needs **View Channel** and **Read Message History**
 permissions to load history. If history cannot be loaded, an error appears
 and you can still try sending messages.
 Use `exit_channel` to select another channel or `exit_server` to select
-another server.
+another server. Failed sends show the Discord error and keep the channel open.
 
 | Input | Behavior |
 | --- | --- |
@@ -312,13 +313,15 @@ another server.
 | `clear logs` | Clears the terminal screen and disables process logging. |
 | `enable logs` | Re-enables logging. |
 | `stop`, `exit`, `quit`, or `bye` | Exits the console and bot. |
-| Ctrl+C | Interrupts execution and exits the program. |
-| End of input, such as Ctrl+D in a Unix terminal | Exits the console and bot. |
+| Ctrl+C | Cancels server/channel selection or chat and returns to local commands; exits the bot at the local-command prompt. |
+| End of input, such as Ctrl+D with empty input in a Unix terminal | Returns from chat to local commands, or exits the bot at the local-command prompt. |
 | Empty line | Keeps the console open without taking action. |
 | Other text | Displays an unknown-command message and keeps the console open. |
 
 Local commands ignore letter case and leading or trailing whitespace. For
-example, `EXIT` and `  exit  ` have the same effect.
+example, `EXIT` and `  exit  ` have the same effect. An optional initial `/`
+is accepted, such as `/help`. While in chat, ordinary input is sent to Discord;
+use Ctrl+C to return to local commands before issuing `help` or `stop`.
 
 The `ping` and `/ping` commands are used in Discord. Typing them in the local
 console displays the unknown-command message.
@@ -364,6 +367,7 @@ YGG/
 ├── .env                              # Local configuration containing the token
 ├── .python-version                   # Python series used by uv
 ├── pyproject.toml                    # Metadata, dependencies, and ygg entry point
+├── requirements.txt                  # pip installation delegating to pyproject.toml
 ├── uv.lock                           # Resolved dependency versions
 ├── README.md                         # Project documentation
 ├── src/
@@ -372,12 +376,26 @@ YGG/
 │       ├── __main__.py               # Entry point for python -m ygg
 │       └── app/
 │           ├── __init__.py
-│           ├── app.py                # Client, commands, and task coordination
-│           └── ygg_terminal/
+│           ├── app.py                # Startup and main()
+│           ├── core/
+│           │   ├── __init__.py
+│           │   ├── config.py         # Environment loading and token validation
+│           │   ├── logging.py        # Log directory and logging setup
+│           │   └── runtime.py        # Discord/terminal tasks and shutdown
+│           ├── discord_bot/
+│           │   ├── __init__.py
+│           │   ├── client.py         # Discord client and event forwarding
+│           │   └── commands.py       # DiscordCommands: text and application commands
+│           └── terminal/
 │               ├── __init__.py
-│               └── terminal.py       # Prompt and local commands
+│               ├── terminal.py       # Terminal session and task coordination
+│               ├── commands.py       # TerminalCommands: local commands and navigation
+│               ├── session.py        # Layout, input, output, styling, and key bindings
+│               └── chat.py           # Channel history, message rendering, and sending
 └── tests/
-    ├── test_app.py                   # Discord commands and execution lifecycle
+    ├── test_app.py                   # Execution lifecycle and task cleanup
+    ├── test_client.py                # Discord commands and non-interactive output
+    ├── test_config.py                # Token loading and environment precedence
     ├── test_entrypoints.py           # Direct execution, module execution, and import
     ├── test_gateway.py               # Real discord.py event payloads
     └── test_terminal.py              # Input, help, exit, and cancellation
@@ -394,28 +412,31 @@ environment.
 | Component | Responsibility |
 | --- | --- |
 | `ygg.__main__` | Exposes `main()` and starts the application when the package runs as a module. |
-| `App` | Extends `discord.Client`, configures intents, and registers the command tree. |
+| `core.config.load_token()` | Loads `.env`, preserves process-environment values, and validates the token. |
+| `core.logging.configure_logging()` | Creates the log directory and configures file logging. |
+| `discord_bot.client.App` | Extends `discord.Client`, configures intents, and connects Discord events to commands and terminal output. |
 | `App.setup_hook()` | Syncs application commands before connecting to the Gateway. |
 | `App.on_ready()` | Logs the connected bot identity. |
-| `App.on_message()` | Parses text commands or mentions and responds to `ping`. |
-| `App.ping()` | Responds to the `/ping` interaction. |
-| `run_app()` | Coordinates the client and terminal tasks and waits for shutdown. |
-| `Terminal.start_terminal()` | Awaits asynchronous input and handles local commands. |
-| `Terminal.send_message()` | Selects a server and text channel, then sends a terminal-provided message. |
+| `App.on_message()` | Forwards live messages to the terminal, displays non-interactive output, and dispatches text commands. |
+| `discord_bot.commands.DiscordCommands` | Registers application commands, parses text prefixes and mentions, and handles `ping`. |
+| `core.runtime.run_app()` | Coordinates the client and terminal tasks and waits for shutdown. |
+| `terminal.terminal.Terminal` | Coordinates the terminal session and command task. |
+| `terminal.commands.TerminalCommands` | Handles local commands, server/channel selection, and navigation. |
+| `terminal.session.TerminalSession` | Maintains the output pane, persistent input, author styling, and keyboard/mouse controls. |
+| `terminal.chat.ChannelChat` | Loads history, filters live messages, renders Discord messages, and sends channel input. |
 
 ### Flow
 
-1. Importing `app.py` loads variables from `.env`.
-2. `main()` creates the client, checks the token, configures logging, and
-   starts the event loop with `asyncio.run()`.
-3. `run_app()` enters the client's asynchronous context and creates the
+1. `main()` loads and checks the token, creates the client, configures logging,
+   and starts the event loop with `asyncio.run()`.
+2. `run_app()` enters the client's asynchronous context and creates the
    `app.start(token)` task, which authenticates and connects to Discord.
-4. If input is interactive, a second task runs
+3. If input is interactive, a second task runs
    `Terminal(app).start_terminal()` using a persistent full-screen
    `prompt_toolkit` application and asynchronous input.
-5. `asyncio.wait(..., return_when=asyncio.FIRST_COMPLETED)` waits for either
+4. `asyncio.wait(..., return_when=asyncio.FIRST_COMPLETED)` waits for either
    task to finish.
-6. When the console exits, the client task ends, or a failure occurs, the
+5. When the console exits, the client task ends, or a failure occurs, the
    remaining tasks are cancelled and awaited. The client context closes the
    connection and associated resources.
 
@@ -458,6 +479,7 @@ and the terminal. Tests verify:
 - Task cancellation and client closure on exit or failure.
 - Execution without a TTY.
 - Help, message sending, exit commands, empty input, unknown text, EOF, and Ctrl+C.
+- Channel history, attachments, author colours, live-channel filtering, and send errors.
 - Propagation of terminal cancellation.
 - Direct execution of `app.py`, module execution, and import without starting the bot.
 - `MESSAGE_CREATE` and `INTERACTION_CREATE` dispatch through real
@@ -471,37 +493,45 @@ validate the token, server permissions, or connectivity in a real environment.
 
 ### Add an application command
 
-Current commands are in [src/ygg/app/app.py](src/ygg/app/app.py). To add, for
-example, `/hello`:
+Discord commands are in
+[src/ygg/app/discord_bot/commands.py](src/ygg/app/discord_bot/commands.py).
+`App` exposes this handler as `app.commands`. To add, for example, `/hello`:
 
-1. Create a coroutine in the `App` class with a `discord.Interaction` parameter.
-2. Register the coroutine in the command tree inside `App.__init__()`, after
-   `self.tree` is created.
+1. Create a coroutine in `DiscordCommands` with a `discord.Interaction` parameter.
+2. Register the coroutine with `tree.command()` inside `DiscordCommands.register()`.
 3. Restart the bot to sync the command, then test the interaction in Discord.
 
-Example method to add to the `App` class:
+Example method to add to `DiscordCommands`:
 
 ```python
 async def hello(self, interaction: discord.Interaction) -> None:
     await interaction.response.send_message("Hello!")
 ```
 
-Corresponding registration inside `__init__()`:
+Corresponding registration inside `register(self, tree)`:
 
 ```python
-self.tree.command(name="hello", description="Send a greeting.")(self.hello)
+tree.command(name="hello", description="Send a greeting.")(self.hello)
 ```
 
 This registration creates an application command. To also support `@ygg
-hello`, add the corresponding handling to `on_message()`, preserving the
+hello`, add the corresponding handling to `DiscordCommands.handle_message()`, preserving the
 author and prefix checks. The two paths are implemented separately.
 
 ### Add a local command
 
-Edit [src/ygg/app/ygg_terminal/terminal.py](src/ygg/app/ygg_terminal/terminal.py)
-and add handling after input normalization and before the unknown-command
-message. Use asynchronous operations for tasks that need to wait; blocking
-calls in this loop also delay the bot.
+Edit [src/ygg/app/terminal/commands.py](src/ygg/app/terminal/commands.py).
+Add a method to `TerminalCommands` and dispatch it from `run()` after input
+normalization and before the unknown-command message. `send_message()` in
+the same class handles server/channel selection and the `exit_channel` and
+`exit_server` navigation commands. `Terminal` exposes the handler as
+`terminal.commands` and coordinates its execution with the session.
+
+Use `ChannelChat` in [src/ygg/app/terminal/chat.py](src/ygg/app/terminal/chat.py)
+for history, formatting, and channel sends. Layout and key bindings live in
+[src/ygg/app/terminal/session.py](src/ygg/app/terminal/session.py).
+Use asynchronous operations for tasks that need to wait; blocking calls in
+the command loop also delay the bot.
 
 ### Change dependencies
 
@@ -532,7 +562,7 @@ suite after changing project behavior.
 | The bot connects but does not respond to `@ygg ping` | Check the exact text, channel access, and send permission. Also test a real mention of the bot followed by `ping`. |
 | `/ping` does not appear | Check the installation's `applications.commands` scope and the sync result in the logs. Make sure you selected the correct Discord application. |
 | `Failed to sync / commands` log | Read the logged exception to identify an API or permission failure. Message commands remain available if the connection succeeds. |
-| Non-TTY input message and no `YGG > ` prompt | Run in an interactive terminal. This is expected in panels without keyboard input. |
+| Non-TTY input message and no ` >>> ` prompt | Run in an interactive terminal. This is expected in panels without keyboard input. |
 | Behavior is unchanged after editing the code | Stop the current instance and restart with `uv run -m ygg`. A running process does not reload files automatically. |
 | `ModuleNotFoundError: No module named 'ygg'` | Install the project with `uv sync --locked` or `python -m pip install -e .` in the environment used to run it. |
 | Packages are missing or Python version is incompatible | Check that the IDE and terminal use the `.venv` environment prepared with Python 3.14 or newer. |

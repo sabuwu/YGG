@@ -1,6 +1,4 @@
 import asyncio
-import importlib
-import os
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -10,145 +8,10 @@ from unittest.mock import AsyncMock, Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from ygg.app.core import runtime as app_module
+
+
 TEST_TOKEN = "test-discord-token"
-with patch("dotenv.load_dotenv"), patch.dict(
-    os.environ, {"DISCORD_API_KEY": TEST_TOKEN}, clear=True
-):
-    app_module = importlib.import_module("ygg.app.app")
-
-
-class AppCommandsTests(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self):
-        with patch.dict(os.environ, {"DISCORD_API_KEY": TEST_TOKEN}, clear=True):
-            self.app = app_module.App()
-        self.app._connection.user = SimpleNamespace(id=123456789)
-
-    async def asyncTearDown(self):
-        await self.app.close()
-
-    def message(self, content, *, bot=False, guild=None):
-        return SimpleNamespace(
-            content=content,
-            author=SimpleNamespace(bot=bot),
-            channel=SimpleNamespace(send=AsyncMock()),
-            guild=guild,
-        )
-
-    async def test_terminal_receives_bot_messages_before_command_filter(self):
-        self.app.terminal = Mock()
-        message = self.message("pong", bot=True)
-        await self.app.on_message(message)
-        self.app.terminal.on_message.assert_called_once_with(message)
-        message.channel.send.assert_not_awaited()
-
-    async def test_ping_accepts_text_prefix_and_mentions_with_whitespace_and_case(self):
-        for content in (
-            "@ygg ping",
-            "  @YGG   PiNg  ",
-            "\t@yGg\npING\t",
-            "<@123456789> ping",
-            "  <@123456789>\tPING  ",
-            "<@!123456789> ping",
-            "\n<@!123456789>\tPiNg\n",
-        ):
-            with self.subTest(content=content):
-                message = self.message(content)
-                await self.app.on_message(message)
-                message.channel.send.assert_awaited_once_with("🏓 pong!")
-
-    async def test_ping_ignores_bots_other_mentions_and_unrelated_messages(self):
-        for content, bot in (
-            ("@ygg ping", True),
-            ("/ping", True),
-            ("<@123456789> ping", True),
-            ("<@987654321> ping", False),
-            ("<@!987654321> ping", False),
-            ("@yggish ping", False),
-            ("hello @ygg ping", False),
-            ("@ygg ping extra", False),
-            ("/ping extra", False),
-            ("@ygg unknown", False),
-            ("@yggping", False),
-            ("ping", False),
-            ("hello", False),
-            ("", False),
-            (None, False),
-        ):
-            with self.subTest(content=content, bot=bot):
-                message = self.message(content, bot=bot)
-                await self.app.on_message(message)
-                message.channel.send.assert_not_awaited()
-
-    async def test_ping_accepts_plain_slash_text(self):
-        for content in ("/ping", "  /PING\n"):
-            with self.subTest(content=content):
-                message = self.message(content)
-                await self.app.on_message(message)
-                message.channel.send.assert_awaited_once_with("🏓 pong!")
-
-    async def test_ping_accepts_only_own_managed_role(self):
-        guild = SimpleNamespace(self_role=SimpleNamespace(mention="<@&777>"))
-        message = self.message("<@&777> ping", guild=guild)
-        await self.app.on_message(message)
-        message.channel.send.assert_awaited_once_with("🏓 pong!")
-
-        for content in ("<@&888> ping", "<@&777> ping extra", "@everyone ping"):
-            with self.subTest(content=content):
-                message = self.message(content, guild=guild)
-                await self.app.on_message(message)
-                message.channel.send.assert_not_awaited()
-
-    async def test_ping_ignores_role_without_own_managed_role(self):
-        for guild in (None, SimpleNamespace(self_role=None)):
-            with self.subTest(guild=guild):
-                message = self.message("<@&777> ping", guild=guild)
-                await self.app.on_message(message)
-                message.channel.send.assert_not_awaited()
-
-    async def test_text_prefix_works_before_discord_user_is_available(self):
-        self.app._connection.user = None
-        message = self.message("@ygg ping")
-        await self.app.on_message(message)
-        message.channel.send.assert_awaited_once_with("🏓 pong!")
-
-    async def test_slash_ping_is_registered_and_responds(self):
-        command = self.app.tree.get_command("ping")
-        self.assertIsNotNone(command)
-        interaction = SimpleNamespace(
-            response=SimpleNamespace(send_message=AsyncMock()),
-            user=SimpleNamespace(id=456),
-        )
-
-        self.assertIs(command.binding, self.app)
-        await command.callback(command.binding, interaction)
-
-        interaction.response.send_message.assert_awaited_once_with("🏓 pong!")
-
-    async def test_setup_hook_syncs_after_ping_is_registered(self):
-        async def sync_registered_commands():
-            command = self.app.tree.get_command("ping")
-            self.assertIsNotNone(command)
-            return [command]
-
-        with patch.object(
-            self.app.tree, "sync", AsyncMock(side_effect=sync_registered_commands)
-        ) as sync:
-            await self.app.setup_hook()
-
-        sync.assert_awaited_once_with()
-
-    async def test_sync_http_failure_does_not_prevent_message_commands(self):
-        response = SimpleNamespace(status=500, reason="Server Error")
-        error = app_module.discord.HTTPException(response, "sync failed")
-        with patch.object(self.app.tree, "sync", AsyncMock(side_effect=error)), (
-            self.assertLogs(app_module.logger, level="ERROR")
-        ):
-            await self.app.setup_hook()
-
-        self.assertIsNotNone(self.app.tree.get_command("ping"))
-        message = self.message("@ygg ping")
-        await self.app.on_message(message)
-        message.channel.send.assert_awaited_once_with("🏓 pong!")
 
 
 class FakeApp:
@@ -194,6 +57,7 @@ class RunAppTests(unittest.IsolatedAsyncioTestCase):
         terminal.start_terminal.assert_awaited_once_with()
         self.assertEqual(loops, [asyncio.get_running_loop()] * 2)
         self.assertTrue(bot_cancelled.is_set())
+        self.assertIsNone(app.terminal)
         app.close.assert_awaited_once_with()
 
     async def test_bot_failure_cancels_terminal_and_closes_app(self):
@@ -222,6 +86,85 @@ class RunAppTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.wait_for(app_module.run_app(app, TEST_TOKEN), timeout=1)
 
         self.assertTrue(terminal_cancelled.is_set())
+        self.assertIsNone(app.terminal)
+        app.close.assert_awaited_once_with()
+
+    async def test_terminal_failure_cancels_bot_and_closes_app(self):
+        bot_started = asyncio.Event()
+        bot_cancelled = asyncio.Event()
+
+        async def start_bot(token):
+            bot_started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                bot_cancelled.set()
+
+        async def start_terminal():
+            await bot_started.wait()
+            raise RuntimeError("terminal failed")
+
+        app = FakeApp(start_bot)
+        terminal = SimpleNamespace(start_terminal=AsyncMock(side_effect=start_terminal))
+        with patch.object(app_module.sys.stdin, "isatty", return_value=True), (
+            patch.object(app_module, "Terminal", return_value=terminal)
+        ):
+            with self.assertRaisesRegex(RuntimeError, "terminal failed"):
+                await asyncio.wait_for(app_module.run_app(app, TEST_TOKEN), timeout=1)
+
+        self.assertTrue(bot_cancelled.is_set())
+        self.assertIsNone(app.terminal)
+        app.close.assert_awaited_once_with()
+
+    async def test_cancelling_runtime_awaits_both_tasks_and_closes_app(self):
+        started = [asyncio.Event(), asyncio.Event()]
+        stopped = [asyncio.Event(), asyncio.Event()]
+
+        async def wait_until_cancelled(index):
+            started[index].set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                stopped[index].set()
+
+        async def start_terminal():
+            await wait_until_cancelled(1)
+
+        async def start_bot(token):
+            await wait_until_cancelled(0)
+
+        app = FakeApp(start_bot)
+        terminal = SimpleNamespace(start_terminal=AsyncMock(side_effect=start_terminal))
+        with patch.object(app_module.sys.stdin, "isatty", return_value=True), (
+            patch.object(app_module, "Terminal", return_value=terminal)
+        ):
+            runner = asyncio.create_task(app_module.run_app(app, TEST_TOKEN))
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*(event.wait() for event in started)), timeout=1
+                )
+                runner.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await asyncio.wait_for(runner, timeout=1)
+            finally:
+                runner.cancel()
+                await asyncio.gather(runner, return_exceptions=True)
+
+        self.assertTrue(all(event.is_set() for event in stopped))
+        self.assertIsNone(app.terminal)
+        app.close.assert_awaited_once_with()
+
+    async def test_terminal_construction_failure_cleans_up_discord_task(self):
+        app = FakeApp(None)
+        existing_tasks = asyncio.all_tasks()
+        with patch.object(app_module.sys.stdin, "isatty", return_value=True), (
+            patch.object(app_module, "Terminal", side_effect=RuntimeError("no terminal"))
+        ):
+            with self.assertRaisesRegex(RuntimeError, "no terminal"):
+                await app_module.run_app(app, TEST_TOKEN)
+
+        self.assertEqual(asyncio.all_tasks(), existing_tasks)
+        self.assertIsNone(app.terminal)
         app.close.assert_awaited_once_with()
 
     async def test_without_tty_bot_keeps_running_without_creating_terminal(self):

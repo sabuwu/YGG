@@ -12,7 +12,10 @@ from prompt_toolkit.data_structures import Size
 from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
-from ygg.app.ygg_terminal.terminal import Terminal, TerminalSession
+from ygg.app.terminal.chat import ChannelChat
+from ygg.app.terminal.commands import TerminalCommands
+from ygg.app.terminal.session import TerminalSession
+from ygg.app.terminal.terminal import Terminal
 
 
 class TerminalTests(unittest.IsolatedAsyncioTestCase):
@@ -35,7 +38,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "ygg.app.ygg_terminal.terminal.TerminalSession", return_value=session
+                "ygg.app.terminal.terminal.TerminalSession", return_value=session
             ),
             redirect_stdout(output),
         ):
@@ -44,7 +47,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
         return session, output.getvalue()
 
     async def test_exit_commands_return_normally(self):
-        for command in ("stop", "exit", "quit", "bye", "  STOP  ", "\tExIt\n"):
+        for command in ("stop", "exit", "quit", "bye", "  STOP  ", "\tExIt\n", "/exit"):
             with self.subTest(command=command):
                 session, output = await self.run_terminal(command)
 
@@ -55,7 +58,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
                 self.assertNotIn("Unknown command", output)
 
     async def test_help_displays_commands_and_keeps_terminal_open(self):
-        for command in ("help", "  HELP  "):
+        for command in ("help", "  HELP  ", "/help"):
             with self.subTest(command=command):
                 session, output = await self.run_terminal(command, "exit")
 
@@ -70,7 +73,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Unknown command", output)
 
     async def test_clear_logs_clears_screen_and_disables_logging(self):
-        with patch("ygg.app.ygg_terminal.terminal.logging.disable") as disable_logging:
+        with patch("ygg.app.terminal.commands.logging.disable") as disable_logging:
             session, output = await self.run_terminal("clear logs", "exit")
 
         self.assertEqual(session.prompt_async.await_count, 2)
@@ -79,7 +82,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
         disable_logging.assert_called_once_with(logging.CRITICAL)
 
     async def test_activate_logs_reenables_logging(self):
-        with patch("ygg.app.ygg_terminal.terminal.logging.disable") as disable_logging:
+        with patch("ygg.app.terminal.commands.logging.disable") as disable_logging:
             session, output = await self.run_terminal("enable logs", "exit")
 
         self.assertEqual(session.prompt_async.await_count, 2)
@@ -132,7 +135,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("chat geral", output)
         self.assertIn("fotos", output)
         self.assertNotIn("voz", output)
-        self.assertIn("Message sent to #fotos in Comando Valley.", output)
+        self.assertNotIn("Message sent", output)
         self.assertEqual(
             [call.args[0] for call in session.prompt_async.await_args_list],
             [
@@ -189,7 +192,8 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(output.count("Available servers:"), 3)
-        self.assertIn("Message sent to #general in server two.", output)
+        channel.send.assert_awaited_once_with("hello from server two")
+        self.assertNotIn("Message sent", output)
 
     async def test_send_message_waits_until_discord_is_ready(self):
         channel = MagicMock()
@@ -246,7 +250,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "ygg.app.ygg_terminal.terminal.TerminalSession", return_value=session
+                "ygg.app.terminal.terminal.TerminalSession", return_value=session
             ),
             redirect_stdout(io.StringIO()),
         ):
@@ -254,6 +258,172 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
                 await Terminal().start_terminal()
 
         session.prompt_async.assert_awaited_once()
+
+    async def test_session_and_command_failures_cancel_the_other_task(self):
+        for failing_task in ("session", "commands"):
+            with self.subTest(failing_task=failing_task):
+                pending_started = asyncio.Event()
+                pending_finished = asyncio.Event()
+
+                async def pending(*args):
+                    pending_started.set()
+                    try:
+                        await asyncio.Event().wait()
+                    finally:
+                        pending_finished.set()
+
+                async def fail(*args):
+                    await pending_started.wait()
+                    raise RuntimeError("terminal failure")
+
+                session = MagicMock()
+                session.run_async = AsyncMock(
+                    side_effect=fail if failing_task == "session" else pending
+                )
+                session.prompt_async = AsyncMock(
+                    side_effect=fail if failing_task == "commands" else pending
+                )
+                terminal = Terminal()
+                with patch(
+                    "ygg.app.terminal.terminal.TerminalSession", return_value=session
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "terminal failure"):
+                        await terminal.start_terminal()
+
+                self.assertTrue(pending_finished.is_set())
+                self.assertIsNone(terminal.session)
+
+
+class TerminalCommandsTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.channel = MagicMock(name="channel")
+        self.channel.name = "general"
+        self.channel.send = AsyncMock()
+
+        async def history():
+            for message in ():
+                yield message
+
+        self.channel.history.return_value = history()
+        self.guild = SimpleNamespace(name="server", text_channels=[self.channel])
+        self.client = MagicMock()
+        self.client.guilds = [self.guild]
+        self.write = MagicMock()
+        self.chat = ChannelChat(self.client, self.write)
+        self.commands = TerminalCommands(self.chat, self.write)
+
+    async def test_send_error_allows_another_message_without_confirming_or_retrying(self):
+        error = discord.Forbidden(SimpleNamespace(status=403, reason="Forbidden"), "denied")
+        self.channel.send.side_effect = [error, None]
+
+        def responses():
+            yield "server"
+            yield "general"
+            yield "failed message"
+            self.assertFalse(any(
+                args.args[0].startswith("Message sent") for args in self.write.call_args_list
+            ))
+            yield "successful message"
+            yield "exit_channel"
+            raise EOFError()
+
+        inputs = responses()
+        session = MagicMock()
+        session.prompt_async = AsyncMock(side_effect=lambda prompt: next(inputs))
+        with self.assertLogs(level="ERROR"), self.assertRaises(EOFError):
+            await self.commands.send_message(session)
+
+        self.channel.send.assert_has_awaits([
+            call("failed message"), call("successful message")
+        ])
+        self.assertEqual(self.channel.send.await_count, 2)
+        lines = [args.args[0] for args in self.write.call_args_list]
+        self.assertTrue(any("HTTP 403" in line for line in lines))
+        self.assertFalse(any(line.startswith("Message sent") for line in lines))
+        self.assertIsNone(self.chat.channel)
+
+    async def test_navigation_clears_active_channel_before_showing_menus(self):
+        for command, menu in (("exit_channel", "server > "), ("exit_server", "Server: ")):
+            with self.subTest(command=command):
+                async def history():
+                    for message in ():
+                        yield message
+
+                self.channel.history.return_value = history()
+                prompts = iter(["server", "general", command])
+
+                def respond(prompt):
+                    if prompt == ">>> ":
+                        self.assertIs(self.chat.channel, self.channel)
+                    else:
+                        self.assertIsNone(self.chat.channel)
+                    try:
+                        return next(prompts)
+                    except StopIteration:
+                        self.assertEqual(prompt, menu)
+                        raise EOFError()
+
+                session = MagicMock()
+                session.prompt_async = AsyncMock(side_effect=respond)
+                with self.assertRaises(EOFError):
+                    await self.commands.send_message(session)
+                self.assertIsNone(self.chat.channel)
+
+    async def test_interrupt_in_channel_returns_to_local_commands(self):
+        for error in (EOFError(), KeyboardInterrupt()):
+            with self.subTest(error=type(error).__name__):
+                async def history():
+                    for message in ():
+                        yield message
+
+                self.channel.history.return_value = history()
+                session = MagicMock()
+                session.prompt_async = AsyncMock(side_effect=[
+                    "send_message", "server", "general", error, "exit"
+                ])
+                terminal = Terminal(self.client)
+                terminal.session = session
+
+                await terminal.commands.run(session)
+
+                session.write.assert_any_call("\nMessage cancelled.")
+                session.write.assert_any_call("\nGoodbye!")
+                self.assertIsNone(terminal.chat.channel)
+
+    async def test_cancellation_during_history_or_input_clears_active_channel(self):
+        for stage in ("history", "input"):
+            with self.subTest(stage=stage):
+                waiting = asyncio.Event()
+
+                async def history():
+                    if stage == "history":
+                        waiting.set()
+                        await asyncio.Event().wait()
+                    for message in ():
+                        yield message
+
+                self.channel.history.return_value = history()
+                responses = iter(["server", "general"])
+
+                async def respond(prompt):
+                    if prompt == ">>> ":
+                        waiting.set()
+                        await asyncio.Event().wait()
+                    return next(responses)
+
+                session = MagicMock()
+                session.prompt_async = AsyncMock(side_effect=respond)
+                task = asyncio.create_task(self.commands.send_message(session))
+                try:
+                    await asyncio.wait_for(waiting.wait(), 1)
+                    self.assertIs(self.chat.channel, self.channel)
+                    task.cancel()
+                    with self.assertRaises(asyncio.CancelledError):
+                        await task
+                    self.assertIsNone(self.chat.channel)
+                finally:
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
 
 
 class HistoryTests(unittest.IsolatedAsyncioTestCase):
@@ -271,9 +441,9 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         channel = MagicMock(id=1)
         channel.history.return_value = history()
         terminal = Terminal()
-        terminal.channel = channel
+        terminal.chat.channel = channel
         terminal.session = MagicMock()
-        await terminal.load_history(channel)
+        await terminal.chat.load_history(channel)
         terminal.on_message(message)
         self.assertEqual(terminal.session.write.call_args_list, [
             call("Nickname: hello\nsecond line", name_style=(8, "fg:#12ab34")),
@@ -281,7 +451,7 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         ])
 
         message.author.colour = discord.Colour.default()
-        terminal.write_message(message)
+        terminal.chat.write_message(message)
         terminal.session.write.assert_called_with("Nickname: hello\nsecond line")
 
     async def test_loads_latest_100_in_chronological_order_with_attachments(self):
@@ -299,7 +469,7 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         channel.history.return_value = history()
         terminal = Terminal()
         terminal.session = MagicMock()
-        await terminal.load_history(channel)
+        await terminal.chat.load_history(channel)
 
         channel.history.assert_called_once_with(limit=100)
         lines = [args.args[0] for args in terminal.session.write.call_args_list]
@@ -314,13 +484,13 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
         terminal = Terminal()
         terminal.session = MagicMock()
         with self.assertLogs(level="ERROR"):
-            await terminal.load_history(channel)
+            await terminal.chat.load_history(channel)
         self.assertIn("Read Message History", terminal.session.write.call_args.args[0])
 
     async def test_live_messages_only_display_for_active_channel_including_bots(self):
         terminal = Terminal()
         terminal.session = MagicMock()
-        terminal.channel = SimpleNamespace(id=1)
+        terminal.chat.channel = SimpleNamespace(id=1)
         message = SimpleNamespace(
             author="bot", content="pong", attachments=[], channel=SimpleNamespace(id=2)
         )
