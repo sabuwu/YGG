@@ -10,6 +10,7 @@ from rich.text import Text
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from ygg.app.discord_bot import client as client_module
+from ygg.app.discord_bot import commands as commands_module
 
 
 class AppCommandsTests(unittest.IsolatedAsyncioTestCase):
@@ -134,6 +135,37 @@ class AppCommandsTests(unittest.IsolatedAsyncioTestCase):
         await command.callback(command.binding, interaction)
 
         interaction.response.send_message.assert_awaited_once_with("🏓 pong!")
+
+    async def test_ping_handles_unknown_interaction_without_command_error(self):
+        response = SimpleNamespace(status=404, reason="Not Found")
+        error = client_module.discord.NotFound(response, "Unknown interaction")
+        interaction = SimpleNamespace(
+            response=SimpleNamespace(send_message=AsyncMock(side_effect=error)),
+            user=SimpleNamespace(id=456),
+        )
+
+        with self.assertLogs(commands_module.logger, level="WARNING") as logs:
+            await self.app.commands.ping(interaction)
+
+        self.assertIn("interaction is no longer valid", logs.output[0])
+
+    async def test_slash_ban_defers_response_and_reports_success(self):
+        guild = SimpleNamespace(name="test server")
+        member = SimpleNamespace(__str__=lambda self: "test member")
+        interaction = SimpleNamespace(
+            guild=guild,
+            response=SimpleNamespace(defer=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock()),
+        )
+
+        with patch.object(commands_module, "ban_user", AsyncMock()) as ban_user:
+            await self.app.commands.ban(interaction, member, "test reason")
+
+        interaction.response.defer.assert_awaited_once_with()
+        ban_user.assert_awaited_once_with(guild, member, "test reason")
+        interaction.followup.send.assert_awaited_once_with(
+            f"{member} was banned."
+        )
 
     async def test_setup_hook_syncs_after_ping_is_registered(self):
         async def sync_registered_commands():

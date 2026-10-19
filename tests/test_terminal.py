@@ -14,6 +14,7 @@ from prompt_toolkit.input import create_pipe_input
 from prompt_toolkit.output import DummyOutput
 
 from ygg.app.terminal.chat import ChannelChat
+from ygg.app.terminal import commands as commands_module
 from ygg.app.terminal.commands import TerminalCommands
 from ygg.app.terminal.session import TerminalSession
 from ygg.app.terminal.terminal import Terminal
@@ -395,6 +396,32 @@ class TerminalCommandsTests(unittest.IsolatedAsyncioTestCase):
                 session.write.assert_any_call("\nMessage cancelled.")
                 session.write.assert_any_call("\nGoodbye!")
                 self.assertIsNone(terminal.chat.channel)
+
+    async def test_ban_command_fetches_user_and_bans_from_selected_server(self):
+        user = SimpleNamespace(__str__=lambda self: "test user")
+        self.client.fetch_user = AsyncMock(return_value=user)
+        session = MagicMock()
+        session.greet = AsyncMock()
+        session.prompt_async = AsyncMock(
+            side_effect=["ban", "server", "123456789", "test reason", "exit"]
+        )
+
+        with patch.object(commands_module, "ban_user", AsyncMock()) as ban_user:
+            await self.commands.run(session)
+
+        self.client.fetch_user.assert_awaited_once_with(123456789)
+        ban_user.assert_awaited_once_with(self.guild, user, "test reason")
+        self.write.assert_any_call(f"{user} was banned from {self.guild.name}.")
+
+    async def test_ban_command_can_be_cancelled_without_exiting_terminal(self):
+        session = MagicMock()
+        session.greet = AsyncMock()
+        session.prompt_async = AsyncMock(side_effect=["ban", KeyboardInterrupt(), "exit"])
+
+        await self.commands.run(session)
+
+        self.write.assert_any_call("\nBan cancelled.")
+        self.write.assert_any_call("\nGoodbye!")
 
     async def test_cancellation_during_history_or_input_clears_active_channel(self):
         for stage in ("history", "input"):

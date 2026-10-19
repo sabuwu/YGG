@@ -1,8 +1,11 @@
 import logging
 from collections.abc import Callable
 
+import discord
+
 from .chat import ChannelChat
 from .session import TerminalSession
+from ygg.app.moderation import ban_user
 
 
 class TerminalCommands:
@@ -21,6 +24,7 @@ class TerminalCommands:
 
         help_message = (
             "Local commands: chat to enter a server and text channel; "
+            "ban to ban a user by ID; "
             "exit_channel to return to that server's channel list; "
             "exit_server to return to the server list; "
             "help to show this message; clear logs to clear the screen and disable logging; "
@@ -57,10 +61,51 @@ class TerminalCommands:
                 case "enable logs":
                     logging.disable(logging.NOTSET)
                     self.write("Logging enabled.")
+                case "ban":
+                    try:
+                        await self._ban_user(session)
+                    except (EOFError, KeyboardInterrupt):
+                        self.write("\nBan cancelled.")
+
                 case "":
                     continue
                 case _:
                     self.write(f"Unknown command: '{command}'. Type help for guidance.")
+
+    async def _ban_user(self, session: TerminalSession) -> None:
+        client = self.chat.client
+        if client is None or not client.guilds:
+            self.write("No Discord servers are available.")
+            return
+
+        guild_name = (await session.prompt_async("Server: ")).strip()
+        guild = next(
+            (
+                item
+                for item in client.guilds
+                if item.name.casefold() == guild_name.casefold()
+            ),
+            None,
+        )
+        if guild is None:
+            self.write(f"Server not found: {guild_name!r}.")
+            return
+
+        user_id = (await session.prompt_async("User ID: ")).strip()
+        reason = (await session.prompt_async("Reason: ")).strip()
+
+        try:
+            user = await client.fetch_user(int(user_id))
+            await ban_user(guild, user, reason)
+        except ValueError:
+            self.write("User ID must be a number.")
+        except discord.HTTPException as error:
+            logging.getLogger(__name__).exception(
+                "Failed to ban user %s from %s.", user_id, guild.name
+            )
+            self.write(f"Discord could not ban that user: {error}")
+        else:
+            self.write(f"{user} was banned from {guild.name}.")
 
     async def send_message(self, session: TerminalSession) -> None:
         client = self.chat.client

@@ -5,9 +5,8 @@ Ygg is a Discord bot written in Python. It supports message commands, the
 alongside the bot. The Discord client and console share the same `asyncio`
 event loop, so the bot can receive messages while the terminal waits for input.
 
-The current version is **0.1.0**. This project provides a small foundation
-for building new commands; its current Discord functionality is replying to
-`ping` with `🏓 pong!`.
+The current version is **0.1.0**. It responds to `ping` with `🏓 pong!` and
+provides `/ban` and a local terminal command for server moderation.
 
 ## Contents
 
@@ -34,9 +33,11 @@ for building new commands; its current Discord functionality is replying to
 - Recognizes real mentions of the bot followed by `ping`.
 - Recognizes a mention of the bot's managed role followed by `ping`.
 - Registers and globally syncs the `/ping` application command at startup.
+- Provides a `/ban` application command for members with the **Ban Members**
+  permission.
 - Responds to `/ping` when sent as a regular text message.
 - Provides a local console to send messages to server text channels, show help,
-  manage logging, and shut down the bot.
+  ban users, manage logging, and shut down the bot.
 - Logs startup, connection, command sync, and handled commands.
 - Coordinates shutdown of the Discord client and console.
 - Runs without a prompt when standard input is not an interactive terminal.
@@ -287,6 +288,14 @@ If syncing raises `discord.HTTPException`, the error is logged and startup
 continues, allowing message commands to be used. This does not guarantee
 that a new `/ping` definition was successfully published.
 
+### Application-command ban
+
+Use `/ban` in a server, select a member, and provide a reason. The command is
+restricted to members with the **Ban Members** permission; the bot also needs
+permission to ban members in that server. It acknowledges the interaction
+before performing the ban so Discord does not expire the command while the
+request is in progress.
+
 ## Local terminal
 
 The local terminal is an interface for controlling the Ygg process. It starts
@@ -316,6 +325,7 @@ another server. Failed sends show the Discord error and keep the channel open.
 | --- | --- |
 | `help` | Displays the available local commands. |
 | `chat` | Selects a server and channel, loads history, and opens chat. |
+| `ban` | Prompts for a server, user ID, and reason, then bans that user. |
 | `exit_channel`, `exit_server` | Leaves the current channel or server while in chat. |
 | `clear logs` | Clears the terminal screen and disables process logging. |
 | `enable logs` | Re-enables logging. |
@@ -332,6 +342,10 @@ use Ctrl+C to return to local commands before issuing `help` or `stop`.
 
 The `ping` and `/ping` commands are used in Discord. Typing them in the local
 console displays the unknown-command message.
+
+The local `ban` command does not need the invoker's Discord permission, but the
+bot must have **Ban Members** permission in the selected server. It can be
+cancelled with Ctrl+C or end-of-input while entering details.
 
 ### Running without a TTY
 
@@ -393,6 +407,9 @@ YGG/
 │           │   ├── __init__.py
 │           │   ├── client.py         # Discord client and event forwarding
 │           │   └── commands.py       # DiscordCommands: text and application commands
+│           ├── moderation/
+│           │   ├── __init__.py
+│           │   └── moderation.py     # Shared Discord moderation actions
 │           └── terminal/
 │               ├── __init__.py
 │               ├── terminal.py       # Terminal session and task coordination
