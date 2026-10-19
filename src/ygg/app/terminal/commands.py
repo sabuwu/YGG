@@ -13,16 +13,20 @@ class TerminalCommands:
         self.write = write
 
     async def run(self, session: TerminalSession) -> None:
+        try:
+            await session.greet()
+        except (EOFError, KeyboardInterrupt):
+            self.write("\nGoodbye!")
+            return
+
         help_message = (
-            "Local commands: send_message to enter a server and text channel; "
+            "Local commands: chat to enter a server and text channel; "
             "exit_channel to return to that server's channel list; "
             "exit_server to return to the server list; "
             "help to show this message; clear logs to clear the screen and disable logging; "
             "enable logs to re-enable logging; stop/exit/quit/bye to shut down the bot."
         )
 
-        self.write("YGG terminal started.")
-        self.write(help_message)
         while True:
             try:
                 command = (await session.prompt_async(" >>> ")).strip().casefold()
@@ -31,6 +35,8 @@ class TerminalCommands:
                 return
 
             command = command.removeprefix("/")
+            if command:
+                session.hide_welcome()
             match command:
                 case _ if command in {"stop", "exit", "quit", "bye"}:
                     if command == "bye":
@@ -39,7 +45,7 @@ class TerminalCommands:
                     return
                 case "help":
                     self.write(help_message)
-                case "send_message":
+                case "chat":
                     try:
                         await self.send_message(session)
                     except (EOFError, KeyboardInterrupt):

@@ -3,6 +3,7 @@ import io
 import logging
 import unittest
 from contextlib import redirect_stdout
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -23,6 +24,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
         self, *responses: str | BaseException, client: Any = None
     ) -> tuple[MagicMock, str]:
         session = MagicMock()
+        session.greet = AsyncMock()
         session.prompt_async = AsyncMock(side_effect=responses)
         session.run_async = AsyncMock(side_effect=asyncio.Event().wait)
         session.write.side_effect = print
@@ -52,8 +54,8 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
                 session, output = await self.run_terminal(command)
 
                 session.prompt_async.assert_awaited_once_with(" >>> ")
-                self.assertIn("YGG terminal started.", output)
-                self.assertIn("Local commands:", output)
+                session.greet.assert_awaited_once_with()
+                session.hide_welcome.assert_called_once_with()
                 self.assertIn("Goodbye!", output)
                 self.assertNotIn("Unknown command", output)
 
@@ -63,13 +65,14 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
                 session, output = await self.run_terminal(command, "exit")
 
                 self.assertEqual(session.prompt_async.await_count, 2)
-                self.assertEqual(output.count("Local commands:"), 2)
+                self.assertEqual(output.count("Local commands:"), 1)
                 self.assertNotIn("Unknown command", output)
 
     async def test_empty_input_keeps_terminal_open(self):
         session, output = await self.run_terminal("", " \t ", "exit")
 
         self.assertEqual(session.prompt_async.await_count, 3)
+        session.hide_welcome.assert_called_once_with()
         self.assertNotIn("Unknown command", output)
 
     async def test_clear_logs_clears_screen_and_disables_logging(self):
@@ -113,7 +116,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
         client.guilds = [guild]
 
         session, output = await self.run_terminal(
-            "send_message",
+            "chat",
             "comando valley",
             "chat geral",
             "hello guys!",
@@ -160,7 +163,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
         client.guilds = [guild]
 
         _, output = await self.run_terminal(
-            "send_message", "missing", KeyboardInterrupt(), "exit", client=client
+            "chat", "missing", KeyboardInterrupt(), "exit", client=client
         )
 
         self.assertIn("Server not found: 'missing'.", output)
@@ -179,7 +182,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
         client.guilds = [guild, second_guild]
 
         _, output = await self.run_terminal(
-            "send_message",
+            "chat",
             "server one",
             "exit_server",
             "server two",
@@ -218,7 +221,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
         client.guilds = []
 
         await self.run_terminal(
-            "send_message",
+            "chat",
             "server",
             "general",
             "hello",
@@ -245,6 +248,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_cancellation_propagates_without_retrying_input(self):
         session = MagicMock()
+        session.greet = AsyncMock()
         session.prompt_async = AsyncMock(side_effect=asyncio.CancelledError())
         session.run_async = AsyncMock(side_effect=asyncio.Event().wait)
 
@@ -277,6 +281,7 @@ class TerminalTests(unittest.IsolatedAsyncioTestCase):
                     raise RuntimeError("terminal failure")
 
                 session = MagicMock()
+                session.greet = AsyncMock()
                 session.run_async = AsyncMock(
                     side_effect=fail if failing_task == "session" else pending
                 )
@@ -378,8 +383,9 @@ class TerminalCommandsTests(unittest.IsolatedAsyncioTestCase):
 
                 self.channel.history.return_value = history()
                 session = MagicMock()
+                session.greet = AsyncMock()
                 session.prompt_async = AsyncMock(side_effect=[
-                    "send_message", "server", "general", error, "exit"
+                    "chat", "server", "general", error, "exit"
                 ])
                 terminal = Terminal(self.client)
                 terminal.session = session
@@ -502,6 +508,122 @@ class HistoryTests(unittest.IsolatedAsyncioTestCase):
 
 
 class LayoutTests(unittest.IsolatedAsyncioTestCase):
+    def rendered_text(self, session: TerminalSession) -> str:
+        screen = session.app.renderer._last_screen
+        return "\n".join(
+            "".join(character.char for _, character in sorted(row.items()))
+            for _, row in sorted(screen.data_buffer.items())
+        )
+
+    async def test_welcome_asks_name_and_remains_until_first_nonempty_command(self):
+        local_now = datetime(
+            2026, 10, 19, 9, 23, 45, 123456,
+            tzinfo=timezone(timedelta(hours=-3)),
+        )
+        with (
+            create_pipe_input() as pipe,
+            patch("ygg.app.terminal.session.datetime") as clock,
+        ):
+            clock.now.return_value.astimezone.return_value = local_now
+            session = TerminalSession(input=pipe, output=DummyOutput())
+            commands = TerminalCommands(ChannelChat(None, session.write), session.write)
+            runner = asyncio.create_task(session.run_async())
+            command_task = asyncio.create_task(commands.run(session))
+            try:
+                await asyncio.sleep(0.05)
+                self.assertIn("__  ______", self.rendered_text(session))
+                self.assertEqual(session.prompt, "enter your name: ")
+                clock.now.assert_not_called()
+
+                pipe.send_text("   \r")
+                await asyncio.sleep(0.05)
+                self.assertEqual(session.prompt, "enter your name: ")
+                self.assertEqual(session.greeting_text, "")
+                clock.now.assert_not_called()
+
+                pipe.send_text("  Ada  ")
+                await asyncio.sleep(0.05)
+                clock.now.assert_not_called()
+                pipe.send_text("\r")
+                await asyncio.sleep(0.05)
+                greeting = "> hello Ada! 2026-10-19 09:23:45-03:00"
+                self.assertEqual(session.greeting_text, greeting)
+                clock.now.assert_called_once_with()
+                clock.now.return_value.astimezone.assert_called_once_with()
+                self.assertEqual(session.prompt, " >>> ")
+                self.assertTrue(session.welcome_visible)
+                self.assertIn(greeting, self.rendered_text(session))
+
+                for blank_command in ("   ", "/"):
+                    pipe.send_text(blank_command + "\r")
+                    await asyncio.sleep(0.05)
+                    self.assertTrue(session.welcome_visible)
+                    self.assertIn("__  ______", self.rendered_text(session))
+
+                pipe.send_text("help")
+                await asyncio.sleep(0.05)
+                self.assertTrue(session.welcome_visible)
+                self.assertIn(greeting, self.rendered_text(session))
+                pipe.send_text("\r")
+                await asyncio.sleep(0.05)
+                self.assertFalse(session.welcome_visible)
+                self.assertIn("Local commands:", session.output.text)
+                self.assertNotIn("__  ______", self.rendered_text(session))
+                self.assertNotIn(greeting, self.rendered_text(session))
+
+                session.clear()
+                await asyncio.sleep(0.05)
+                self.assertFalse(session.welcome_visible)
+                self.assertEqual(session.output.text, "")
+                self.assertNotIn("__  ______", self.rendered_text(session))
+                self.assertNotIn(greeting, self.rendered_text(session))
+                pipe.send_text("exit\r")
+                await asyncio.wait_for(command_task, 1)
+            finally:
+                command_task.cancel()
+                runner.cancel()
+                await asyncio.gather(command_task, runner, return_exceptions=True)
+
+    async def test_interrupt_or_eof_during_name_input_exits_without_commands(self):
+        for key in ("\x03", "\x04"):
+            with self.subTest(key=repr(key)), create_pipe_input() as pipe:
+                session = TerminalSession(input=pipe, output=DummyOutput())
+                commands = TerminalCommands(ChannelChat(None, session.write), session.write)
+                runner = asyncio.create_task(session.run_async())
+                command_task = asyncio.create_task(commands.run(session))
+                try:
+                    await asyncio.sleep(0.05)
+                    pipe.send_text(key)
+                    await asyncio.wait_for(command_task, 1)
+                    self.assertIn("Goodbye!", session.output.text)
+                    self.assertEqual(session.prompt, "enter your name: ")
+                    self.assertEqual(session.greeting_text, "")
+                    self.assertTrue(session.welcome_visible)
+                    self.assertIsNone(session.pending)
+                finally:
+                    command_task.cancel()
+                    runner.cancel()
+                    await asyncio.gather(command_task, runner, return_exceptions=True)
+
+    async def test_cancellation_during_name_input_propagates_and_releases_prompt(self):
+        with create_pipe_input() as pipe:
+            session = TerminalSession(input=pipe, output=DummyOutput())
+            commands = TerminalCommands(ChannelChat(None, session.write), session.write)
+            command_task = asyncio.create_task(commands.run(session))
+            try:
+                await asyncio.sleep(0)
+                self.assertIsNotNone(session.pending)
+                command_task.cancel()
+                with self.assertRaises(asyncio.CancelledError):
+                    await command_task
+                self.assertIsNone(session.pending)
+                self.assertEqual(session.greeting_text, "")
+                self.assertNotIn("Goodbye!", session.output.text)
+                self.assertTrue(session.welcome_visible)
+            finally:
+                command_task.cancel()
+                await asyncio.gather(command_task, return_exceptions=True)
+
     async def test_typing_submit_and_resize_preserve_output_and_input_position(self):
         class Output(DummyOutput):
             rows = 12

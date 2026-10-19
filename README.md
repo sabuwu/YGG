@@ -213,13 +213,20 @@ start the bot from the IDE's active file with the project's virtual
 environment selected. Open the IDE's integrated terminal to use the local
 console; debug consoles and output panels might not provide interactive input.
 
-The interactive console starts with:
+The interactive console shows the YGG logo and asks `enter your name: `.
+After a non-empty name, it displays a greeting above the command prompt,
+for example:
 
 ```text
-YGG terminal started.
-Local commands: send_message to enter a server and text channel; exit_channel to return to that server's channel list; exit_server to return to the server list; help to show this message; clear logs to clear the screen and disable logging; enable logs to re-enable logging; stop/exit/quit/bye to shut down the bot.
+> hello Alex! 2026-10-19 15:30:00-03:00
  >>>
 ```
+
+The timestamp is captured after the name is entered, using the computer's
+configured local timezone and UTC offset. The logo and greeting remain visible
+until the first non-empty command is submitted. Empty input keeps them visible;
+clearing the output after a command does not bring them back. Use `help` to list
+the available commands.
 
 The prompt alone does not confirm that the bot connected. Startup,
 command-sync results, and `Connected to Discord as ...` are recorded in
@@ -294,7 +301,7 @@ Press F2 to enable mouse-wheel scrolling; press F2 again to return to native
 text selection. The bottom row shows the active mode. PageUp/PageDown work
 in either mode.
 
-Use `send_message`, select a server, then select a text channel. Entering a
+Use `chat`, select a server, then select a text channel. Entering a
 channel loads its latest 100 messages in chronological order, including
 attachment URLs. Author names use their server nickname and Discord role
 colour, when available; users without a role colour use the terminal's default.
@@ -308,7 +315,7 @@ another server. Failed sends show the Discord error and keep the channel open.
 | Input | Behavior |
 | --- | --- |
 | `help` | Displays the available local commands. |
-| `send_message` | Selects a server and channel, loads history, and opens chat. |
+| `chat` | Selects a server and channel, loads history, and opens chat. |
 | `exit_channel`, `exit_server` | Leaves the current channel or server while in chat. |
 | `clear logs` | Clears the terminal screen and disables process logging. |
 | `enable logs` | Re-enables logging. |
